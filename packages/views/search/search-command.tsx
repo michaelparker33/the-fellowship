@@ -77,6 +77,19 @@ export function SearchCommand() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, []);
 
+  // Close on single ESC — capture phase fires before base-ui Dialog's handlers
+  useEffect(() => {
+    if (!open) return;
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("keydown", handleEsc, true);
+    return () => document.removeEventListener("keydown", handleEsc, true);
+  }, [open, setOpen]);
+
   // Cleanup debounce/abort on unmount
   useEffect(() => {
     return () => {
@@ -166,12 +179,6 @@ export function SearchCommand() {
               placeholder="Type a command or search..."
               value={query}
               onValueChange={handleValueChange}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") {
-                  e.preventDefault();
-                  setOpen(false);
-                }
-              }}
               className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
             <kbd className="hidden shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground sm:inline">
