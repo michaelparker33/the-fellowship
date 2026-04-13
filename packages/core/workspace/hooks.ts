@@ -43,3 +43,17 @@ export function useActorName() {
 
   return { getMemberName, getAgentName, getActorName, getActorInitials, getActorAvatarUrl };
 }
+
+/**
+ * Returns the current user's role in the active workspace.
+ * Returns undefined while loading, or "member" by default.
+ */
+export function useCurrentMemberRole(userId?: string | null): "owner" | "admin" | "member" | undefined {
+  const wsId = useWorkspaceId();
+  const { data: members, isLoading } = useQuery(memberListOptions(wsId));
+
+  if (isLoading || !members || !userId) return undefined;
+
+  const member = members.find((m) => m.user_id === userId);
+  return (member?.role as "owner" | "admin" | "member") ?? "member";
+}

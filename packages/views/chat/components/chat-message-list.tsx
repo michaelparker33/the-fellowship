@@ -9,7 +9,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@multica/ui/components/ui/collapsible";
-import { Bot, Loader2, ChevronRight, ChevronDown, Brain, AlertCircle } from "lucide-react";
+import { Loader2, ChevronRight, ChevronDown, Brain, AlertCircle } from "lucide-react";
 import { api } from "@multica/core/api";
 import { Markdown } from "@multica/views/common/markdown";
 import type { ChatMessage, Agent, TaskMessagePayload } from "@multica/core/types";
@@ -55,8 +55,11 @@ export function ChatMessageList({
       {isWaiting && !hasTimeline && (
         <div className="flex items-start gap-3">
           <AgentAvatar agent={agent} />
-          <div className="flex items-center pt-1">
+          <div className="flex items-center gap-2 pt-1">
             <Loader2 className="size-4 animate-spin text-muted-foreground" />
+            <span className="text-sm text-muted-foreground animate-pulse">
+              {agent?.name ?? "Gandalf"} is thinking...
+            </span>
           </div>
         </div>
       )}
@@ -360,8 +363,8 @@ function AgentAvatar({ agent }: { agent: Agent | null }) {
   return (
     <Avatar className="size-6 shrink-0 mt-0.5">
       {agent?.avatar_url && <AvatarImage src={agent.avatar_url} />}
-      <AvatarFallback className="bg-purple-100 text-purple-700">
-        <Bot className="size-3" />
+      <AvatarFallback className="bg-muted text-muted-foreground text-[10px] font-bold">
+        G
       </AvatarFallback>
     </Avatar>
   );

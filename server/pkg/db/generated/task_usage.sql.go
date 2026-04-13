@@ -45,7 +45,7 @@ func (q *Queries) GetIssueUsageSummary(ctx context.Context, issueID pgtype.UUID)
 }
 
 const getTaskUsage = `-- name: GetTaskUsage :many
-SELECT id, task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at FROM task_usage
+SELECT id, task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at, cost_usd FROM task_usage
 WHERE task_id = $1
 ORDER BY model
 `
@@ -69,6 +69,100 @@ func (q *Queries) GetTaskUsage(ctx context.Context, taskID pgtype.UUID) ([]TaskU
 			&i.CacheReadTokens,
 			&i.CacheWriteTokens,
 			&i.CreatedAt,
+			&i.CostUsd,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getWorkspaceDailySpend = `-- name: GetWorkspaceDailySpend :one
+SELECT COALESCE(SUM(tu.cost_usd), 0)::numeric AS total_cost_usd
+FROM task_usage tu
+JOIN agent_task_queue atq ON atq.id = tu.task_id
+JOIN agent a ON a.id = atq.agent_id
+WHERE a.workspace_id = $1
+  AND atq.created_at >= DATE_TRUNC('day', NOW())
+`
+
+func (q *Queries) GetWorkspaceDailySpend(ctx context.Context, workspaceID pgtype.UUID) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceDailySpend, workspaceID)
+	var total_cost_usd pgtype.Numeric
+	err := row.Scan(&total_cost_usd)
+	return total_cost_usd, err
+}
+
+const getWorkspaceMonthlySpend = `-- name: GetWorkspaceMonthlySpend :one
+SELECT COALESCE(SUM(tu.cost_usd), 0)::numeric AS total_cost_usd
+FROM task_usage tu
+JOIN agent_task_queue atq ON atq.id = tu.task_id
+JOIN agent a ON a.id = atq.agent_id
+WHERE a.workspace_id = $1
+  AND atq.created_at >= DATE_TRUNC('month', NOW())
+`
+
+func (q *Queries) GetWorkspaceMonthlySpend(ctx context.Context, workspaceID pgtype.UUID) (pgtype.Numeric, error) {
+	row := q.db.QueryRow(ctx, getWorkspaceMonthlySpend, workspaceID)
+	var total_cost_usd pgtype.Numeric
+	err := row.Scan(&total_cost_usd)
+	return total_cost_usd, err
+}
+
+const getWorkspaceUsageByAgent = `-- name: GetWorkspaceUsageByAgent :many
+SELECT
+    atq.agent_id,
+    a.name AS agent_name,
+    tu.model,
+    SUM(tu.input_tokens)::bigint AS total_input_tokens,
+    SUM(tu.output_tokens)::bigint AS total_output_tokens,
+    SUM(tu.cost_usd)::numeric AS total_cost_usd,
+    COUNT(DISTINCT tu.task_id)::int AS task_count
+FROM task_usage tu
+JOIN agent_task_queue atq ON atq.id = tu.task_id
+JOIN agent a ON a.id = atq.agent_id
+WHERE a.workspace_id = $1
+  AND atq.created_at >= $2::timestamptz
+GROUP BY atq.agent_id, a.name, tu.model
+ORDER BY total_cost_usd DESC
+`
+
+type GetWorkspaceUsageByAgentParams struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Since       pgtype.Timestamptz `json:"since"`
+}
+
+type GetWorkspaceUsageByAgentRow struct {
+	AgentID           pgtype.UUID    `json:"agent_id"`
+	AgentName         string         `json:"agent_name"`
+	Model             string         `json:"model"`
+	TotalInputTokens  int64          `json:"total_input_tokens"`
+	TotalOutputTokens int64          `json:"total_output_tokens"`
+	TotalCostUsd      pgtype.Numeric `json:"total_cost_usd"`
+	TaskCount         int32          `json:"task_count"`
+}
+
+func (q *Queries) GetWorkspaceUsageByAgent(ctx context.Context, arg GetWorkspaceUsageByAgentParams) ([]GetWorkspaceUsageByAgentRow, error) {
+	rows, err := q.db.Query(ctx, getWorkspaceUsageByAgent, arg.WorkspaceID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetWorkspaceUsageByAgentRow{}
+	for rows.Next() {
+		var i GetWorkspaceUsageByAgentRow
+		if err := rows.Scan(
+			&i.AgentID,
+			&i.AgentName,
+			&i.Model,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCostUsd,
+			&i.TaskCount,
 		); err != nil {
 			return nil, err
 		}
@@ -141,6 +235,70 @@ func (q *Queries) GetWorkspaceUsageByDay(ctx context.Context, arg GetWorkspaceUs
 	return items, nil
 }
 
+const getWorkspaceUsageByDayWithCost = `-- name: GetWorkspaceUsageByDayWithCost :many
+SELECT
+    DATE(atq.created_at) AS date,
+    tu.model,
+    SUM(tu.input_tokens)::bigint AS total_input_tokens,
+    SUM(tu.output_tokens)::bigint AS total_output_tokens,
+    SUM(tu.cache_read_tokens)::bigint AS total_cache_read_tokens,
+    SUM(tu.cache_write_tokens)::bigint AS total_cache_write_tokens,
+    SUM(tu.cost_usd)::numeric AS total_cost_usd,
+    COUNT(DISTINCT tu.task_id)::int AS task_count
+FROM task_usage tu
+JOIN agent_task_queue atq ON atq.id = tu.task_id
+JOIN agent a ON a.id = atq.agent_id
+WHERE a.workspace_id = $1
+  AND atq.created_at >= $2::timestamptz
+GROUP BY DATE(atq.created_at), tu.model
+ORDER BY DATE(atq.created_at) DESC, tu.model
+`
+
+type GetWorkspaceUsageByDayWithCostParams struct {
+	WorkspaceID pgtype.UUID        `json:"workspace_id"`
+	Since       pgtype.Timestamptz `json:"since"`
+}
+
+type GetWorkspaceUsageByDayWithCostRow struct {
+	Date                  pgtype.Date    `json:"date"`
+	Model                 string         `json:"model"`
+	TotalInputTokens      int64          `json:"total_input_tokens"`
+	TotalOutputTokens     int64          `json:"total_output_tokens"`
+	TotalCacheReadTokens  int64          `json:"total_cache_read_tokens"`
+	TotalCacheWriteTokens int64          `json:"total_cache_write_tokens"`
+	TotalCostUsd          pgtype.Numeric `json:"total_cost_usd"`
+	TaskCount             int32          `json:"task_count"`
+}
+
+func (q *Queries) GetWorkspaceUsageByDayWithCost(ctx context.Context, arg GetWorkspaceUsageByDayWithCostParams) ([]GetWorkspaceUsageByDayWithCostRow, error) {
+	rows, err := q.db.Query(ctx, getWorkspaceUsageByDayWithCost, arg.WorkspaceID, arg.Since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []GetWorkspaceUsageByDayWithCostRow{}
+	for rows.Next() {
+		var i GetWorkspaceUsageByDayWithCostRow
+		if err := rows.Scan(
+			&i.Date,
+			&i.Model,
+			&i.TotalInputTokens,
+			&i.TotalOutputTokens,
+			&i.TotalCacheReadTokens,
+			&i.TotalCacheWriteTokens,
+			&i.TotalCostUsd,
+			&i.TaskCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getWorkspaceUsageSummary = `-- name: GetWorkspaceUsageSummary :many
 SELECT
     tu.model,
@@ -200,24 +358,26 @@ func (q *Queries) GetWorkspaceUsageSummary(ctx context.Context, arg GetWorkspace
 }
 
 const upsertTaskUsage = `-- name: UpsertTaskUsage :exec
-INSERT INTO task_usage (task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO task_usage (task_id, provider, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cost_usd)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (task_id, provider, model)
 DO UPDATE SET
     input_tokens = EXCLUDED.input_tokens,
     output_tokens = EXCLUDED.output_tokens,
     cache_read_tokens = EXCLUDED.cache_read_tokens,
-    cache_write_tokens = EXCLUDED.cache_write_tokens
+    cache_write_tokens = EXCLUDED.cache_write_tokens,
+    cost_usd = EXCLUDED.cost_usd
 `
 
 type UpsertTaskUsageParams struct {
-	TaskID           pgtype.UUID `json:"task_id"`
-	Provider         string      `json:"provider"`
-	Model            string      `json:"model"`
-	InputTokens      int64       `json:"input_tokens"`
-	OutputTokens     int64       `json:"output_tokens"`
-	CacheReadTokens  int64       `json:"cache_read_tokens"`
-	CacheWriteTokens int64       `json:"cache_write_tokens"`
+	TaskID           pgtype.UUID    `json:"task_id"`
+	Provider         string         `json:"provider"`
+	Model            string         `json:"model"`
+	InputTokens      int64          `json:"input_tokens"`
+	OutputTokens     int64          `json:"output_tokens"`
+	CacheReadTokens  int64          `json:"cache_read_tokens"`
+	CacheWriteTokens int64          `json:"cache_write_tokens"`
+	CostUsd          pgtype.Numeric `json:"cost_usd"`
 }
 
 func (q *Queries) UpsertTaskUsage(ctx context.Context, arg UpsertTaskUsageParams) error {
@@ -229,6 +389,7 @@ func (q *Queries) UpsertTaskUsage(ctx context.Context, arg UpsertTaskUsageParams
 		arg.OutputTokens,
 		arg.CacheReadTokens,
 		arg.CacheWriteTokens,
+		arg.CostUsd,
 	)
 	return err
 }

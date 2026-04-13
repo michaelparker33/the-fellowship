@@ -492,6 +492,74 @@ func (h *Handler) GoogleLogin(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DevLogin is a development-only endpoint that auto-creates and logs in a user
+// without requiring email verification. Guarded by LOCAL_AUTO_LOGIN env var.
+func (h *Handler) DevLogin(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("LOCAL_AUTO_LOGIN") != "true" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var req struct {
+		Email string `json:"email"`
+		Name  string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email == "" {
+		email = "michaelparker@ciwebgroup.com"
+	}
+
+	name := strings.TrimSpace(req.Name)
+	if name == "" {
+		name = "Michael Parker"
+	}
+
+	// Find or create the user
+	user, err := h.Queries.GetUserByEmail(r.Context(), email)
+	if err != nil {
+		if !isNotFound(err) {
+			writeError(w, http.StatusInternalServerError, "failed to look up user")
+			return
+		}
+		user, err = h.Queries.CreateUser(r.Context(), db.CreateUserParams{
+			Name:  name,
+			Email: email,
+		})
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to create user")
+			return
+		}
+	}
+
+	if err := h.ensureUserWorkspace(r.Context(), user); err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to provision workspace")
+		return
+	}
+
+	tokenString, err := h.issueJWT(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate token")
+		return
+	}
+
+	if h.CFSigner != nil {
+		for _, cookie := range h.CFSigner.SignedCookies(time.Now().Add(30 * 24 * time.Hour)) {
+			http.SetCookie(w, cookie)
+		}
+	}
+
+	slog.Info("dev auto-login", "user_id", uuidToString(user.ID), "email", user.Email)
+	writeJSON(w, http.StatusOK, LoginResponse{
+		Token: tokenString,
+		User:  userToResponse(user),
+	})
+}
+
 func (h *Handler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := requireUserID(w, r)
 	if !ok {

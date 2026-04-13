@@ -139,7 +139,10 @@ export function AgentsPage() {
         {/* Left column — agent list */}
         <div className="overflow-y-auto h-full border-r">
           <div className="flex h-12 items-center justify-between border-b px-4">
-            <h1 className="text-sm font-semibold">Agents</h1>
+            <div className="flex items-center gap-2">
+              <Bot className="h-4 w-4 text-muted-foreground" />
+              <h1 className="text-sm font-medium">Agents</h1>
+            </div>
             <div className="flex items-center gap-1">
               {archivedCount > 0 && (
                 <Button

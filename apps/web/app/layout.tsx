@@ -22,18 +22,18 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.multica.ai"),
   title: {
-    default: "Multica — Project Management for Human + Agent Teams",
-    template: "%s | Multica",
+    default: "The Fellowship — AI-Native Task Management",
+    template: "%s | The Fellowship",
   },
   description:
-    "Open-source platform that turns coding agents into real teammates. Assign tasks, track progress, compound skills.",
+    "One Fellowship to find them, one wizard to guide them, one ranger to watch them, and in the light bind them.",
   icons: {
     icon: [{ url: "/favicon.svg", type: "image/svg+xml" }],
     shortcut: ["/favicon.svg"],
   },
   openGraph: {
     type: "website",
-    siteName: "Multica",
+    siteName: "The Fellowship",
     locale: "en_US",
   },
   twitter: {

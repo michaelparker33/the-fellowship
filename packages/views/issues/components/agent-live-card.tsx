@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Bot, ChevronRight, ChevronDown, Loader2, ArrowDown, Brain, AlertCircle, Clock, CheckCircle2, XCircle, Square, Maximize2 } from "lucide-react";
+import { Bot, ChevronRight, ChevronDown, Loader2, ArrowDown, Brain, AlertCircle, Clock, CheckCircle2, XCircle, Square, Maximize2, RefreshCw } from "lucide-react";
 import { api } from "@multica/core/api";
 import { useWSEvent } from "@multica/core/realtime";
 import type { TaskMessagePayload, TaskCompletedPayload, TaskFailedPayload, TaskCancelledPayload } from "@multica/core/types/events";
@@ -498,6 +498,17 @@ function TaskRunEntry({ task }: { task: AgentTask }) {
           {new Date(task.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
         </span>
         {duration && <span className="text-muted-foreground">{duration}</span>}
+        {task.continuation_index > 0 && (
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <RefreshCw className="h-2.5 w-2.5" />
+            Attempt {task.continuation_index + 1}/{task.max_continuations + 1}
+          </span>
+        )}
+        {task.failure_reason && (
+          <span className="text-[10px] text-muted-foreground truncate max-w-[120px]" title={task.failure_reason}>
+            {task.failure_reason}
+          </span>
+        )}
         <span className={cn("ml-auto capitalize", task.status === "completed" ? "text-success" : "text-destructive")}>
           {task.status}
         </span>
@@ -530,6 +541,11 @@ function TaskRunEntry({ task }: { task: AgentTask }) {
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
+        {task.progress_notes && (
+          <div className="ml-5 mt-1 rounded border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+            <span className="font-medium text-foreground/70">Progress notes:</span>{"\n"}{task.progress_notes}
+          </div>
+        )}
         <div className="ml-5 mt-1 max-h-64 overflow-y-auto rounded border bg-muted/30 px-3 py-2 space-y-0.5">
           {items === null ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">

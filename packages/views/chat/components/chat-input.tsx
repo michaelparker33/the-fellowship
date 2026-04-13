@@ -8,9 +8,10 @@ interface ChatInputProps {
   onStop?: () => void;
   isRunning?: boolean;
   disabled?: boolean;
+  placeholder?: string;
 }
 
-export function ChatInput({ onSend, onStop, isRunning, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, isRunning, disabled, placeholder }: ChatInputProps) {
   const [value, setValue] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -53,7 +54,7 @@ export function ChatInput({ onSend, onStop, isRunning, disabled }: ChatInputProp
             handleInput();
           }}
           onKeyDown={handleKeyDown}
-          placeholder={disabled ? "This session is archived" : "Ask Multica..."}
+          placeholder={placeholder ?? (disabled ? "This session is archived" : "Ask Gandalf...")}
           disabled={isRunning || disabled}
           className="block w-full resize-none bg-transparent px-3 pt-3 pb-2 text-sm placeholder:text-muted-foreground focus:outline-none disabled:opacity-50"
           rows={1}

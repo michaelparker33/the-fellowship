@@ -184,3 +184,8 @@ ORDER BY created_at DESC;
 UPDATE agent SET status = $2, updated_at = now()
 WHERE id = $1
 RETURNING *;
+
+-- name: SearchAgents :many
+SELECT * FROM agent
+WHERE workspace_id = $1 AND (name ILIKE '%' || $2 || '%' OR description ILIKE '%' || $2 || '%') AND archived_at IS NULL
+ORDER BY name LIMIT $3;

@@ -311,9 +311,23 @@ func (s *TaskService) CompleteTask(ctx context.Context, taskID pgtype.UUID, resu
 	return &task, nil
 }
 
+// FailTaskResult holds the failed task and an optional continuation task.
+type FailTaskResult struct {
+	Task             *db.AgentTaskQueue
+	ContinuationTask *db.AgentTaskQueue // non-nil if a continuation was spawned
+}
+
+// isRetriableFailure returns true if the failure reason indicates the task
+// should be automatically retried via a continuation session.
+func isRetriableFailure(errMsg string) bool {
+	return errMsg == "timeout" || errMsg == "max_turns"
+}
+
 // FailTask marks a task as failed.
+// For retriable failures (timeout, max_turns), automatically spawns a
+// continuation task if the continuation limit has not been reached.
 // Issue status is NOT changed here — the agent manages it via the CLI.
-func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg string) (*db.AgentTaskQueue, error) {
+func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg string) (*FailTaskResult, error) {
 	task, err := s.Queries.FailAgentTask(ctx, db.FailAgentTaskParams{
 		ID:    taskID,
 		Error: pgtype.Text{String: errMsg, Valid: true},
@@ -337,16 +351,82 @@ func (s *TaskService) FailTask(ctx context.Context, taskID pgtype.UUID, errMsg s
 
 	slog.Warn("task failed", "task_id", util.UUIDToString(task.ID), "issue_id", util.UUIDToString(task.IssueID), "error", errMsg)
 
-	if errMsg != "" && task.IssueID.Valid {
+	// Store the failure reason in the dedicated column.
+	s.Queries.UpdateTaskFailureReason(ctx, db.UpdateTaskFailureReasonParams{
+		ID:            taskID,
+		FailureReason: pgtype.Text{String: errMsg, Valid: errMsg != ""},
+	})
+
+	result := &FailTaskResult{Task: &task}
+
+	// Loop detection: track consecutive failures per issue+agent for escalation.
+	escalated := false
+	if task.IssueID.Valid {
+		issue, issueErr := s.Queries.GetIssue(ctx, task.IssueID)
+		if issueErr == nil {
+			failureEntry, _ := json.Marshal([]map[string]string{{
+				"reason":    errMsg,
+				"timestamp": task.CreatedAt.Time.Format("2006-01-02T15:04:05Z"),
+				"task_id":   util.UUIDToString(task.ID),
+			}})
+			ld, ldErr := s.Queries.UpsertLoopDetection(ctx, db.UpsertLoopDetectionParams{
+				WorkspaceID: issue.WorkspaceID,
+				IssueID:     task.IssueID,
+				AgentID:     task.AgentID,
+				Column4:     failureEntry,
+			})
+			if ldErr == nil && ld.EscalationStatus == "escalated" {
+				escalated = true
+				slog.Warn("loop detection escalated",
+					"issue_id", util.UUIDToString(task.IssueID),
+					"agent_id", util.UUIDToString(task.AgentID),
+					"consecutive_failures", ld.ConsecutiveFailures,
+				)
+			}
+		}
+	}
+
+	// Auto-continuation for retriable failures (skip if escalated).
+	if !escalated && isRetriableFailure(errMsg) && task.ContinuationIndex < task.MaxContinuations {
+		// Build progress notes: append this failure's summary to existing notes.
+		progressNotes := task.ProgressNotes
+		if progressNotes != "" {
+			progressNotes += "\n"
+		}
+		progressNotes += fmt.Sprintf("Attempt %d failed: %s", task.ContinuationIndex+1, errMsg)
+
+		contTask, contErr := s.Queries.CreateContinuationTask(ctx, db.CreateContinuationTaskParams{
+			ContinuationOf: task.ID,
+			ProgressNotes:  progressNotes,
+		})
+		if contErr != nil {
+			slog.Error("failed to create continuation task",
+				"task_id", util.UUIDToString(task.ID),
+				"error", contErr,
+			)
+		} else {
+			result.ContinuationTask = &contTask
+			slog.Info("continuation task created",
+				"original_task_id", util.UUIDToString(task.ID),
+				"continuation_task_id", util.UUIDToString(contTask.ID),
+				"continuation_index", contTask.ContinuationIndex,
+				"max_continuations", contTask.MaxContinuations,
+			)
+		}
+	}
+
+	if errMsg != "" && task.IssueID.Valid && result.ContinuationTask == nil {
+		// Only post failure comment if we are NOT continuing — otherwise it's noise.
 		s.createAgentComment(ctx, task.IssueID, task.AgentID, redact.Text(errMsg), "system", task.TriggerCommentID)
 	}
+
 	// Reconcile agent status
 	s.ReconcileAgentStatus(ctx, task.AgentID)
 
 	// Broadcast
 	s.broadcastTaskEvent(ctx, protocol.EventTaskFailed, task)
 
-	return &task, nil
+	return result, nil
 }
 
 // ReportProgress broadcasts a progress update via the event bus.

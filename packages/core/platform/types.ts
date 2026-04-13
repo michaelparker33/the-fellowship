@@ -12,4 +12,6 @@ export interface CoreProviderProps {
   onLogin?: () => void;
   /** Called after logout (e.g. clear cookie). */
   onLogout?: () => void;
+  /** When true, auto-login as dev user if no token exists (local dev only). */
+  autoLogin?: boolean;
 }

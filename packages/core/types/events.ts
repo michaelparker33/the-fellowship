@@ -52,7 +52,14 @@ export type WSEventType =
   | "project:updated"
   | "project:deleted"
   | "pin:created"
-  | "pin:deleted";
+  | "pin:deleted"
+  | "approval:created"
+  | "approval:decided"
+  | "watch:fired"
+  | "safety:emergency_stop"
+  | "safety:resume"
+  | "safety:updated"
+  | "achievement:unlocked";
 
 export interface WSMessage<T = unknown> {
   type: WSEventType;

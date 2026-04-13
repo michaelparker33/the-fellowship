@@ -187,6 +187,10 @@ func (h *Handler) CreateWorkspace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Seed default approval configs and safety config for the new workspace
+	qtx.SeedApprovalConfigs(r.Context(), ws.ID)
+	qtx.EnsureSafetyConfig(r.Context(), ws.ID)
+
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to create workspace")
 		return

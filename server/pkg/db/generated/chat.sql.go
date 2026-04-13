@@ -92,7 +92,7 @@ func (q *Queries) CreateChatSession(ctx context.Context, arg CreateChatSessionPa
 const createChatTask = `-- name: CreateChatTask :one
 INSERT INTO agent_task_queue (agent_id, runtime_id, issue_id, status, priority, chat_session_id)
 VALUES ($1, $2, NULL, 'queued', $3, $4)
-RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id
+RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, continuation_of, continuation_index, max_continuations, progress_notes, failure_reason
 `
 
 type CreateChatTaskParams struct {
@@ -128,6 +128,11 @@ func (q *Queries) CreateChatTask(ctx context.Context, arg CreateChatTaskParams) 
 		&i.WorkDir,
 		&i.TriggerCommentID,
 		&i.ChatSessionID,
+		&i.ContinuationOf,
+		&i.ContinuationIndex,
+		&i.MaxContinuations,
+		&i.ProgressNotes,
+		&i.FailureReason,
 	)
 	return i, err
 }
@@ -309,6 +314,49 @@ type ListChatSessionsByCreatorParams struct {
 
 func (q *Queries) ListChatSessionsByCreator(ctx context.Context, arg ListChatSessionsByCreatorParams) ([]ChatSession, error) {
 	rows, err := q.db.Query(ctx, listChatSessionsByCreator, arg.WorkspaceID, arg.CreatorID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ChatSession{}
+	for rows.Next() {
+		var i ChatSession
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.AgentID,
+			&i.CreatorID,
+			&i.Title,
+			&i.SessionID,
+			&i.WorkDir,
+			&i.Status,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchChatSessions = `-- name: SearchChatSessions :many
+SELECT id, workspace_id, agent_id, creator_id, title, session_id, work_dir, status, created_at, updated_at FROM chat_session
+WHERE workspace_id = $1 AND title ILIKE '%' || $2 || '%' AND status = 'active'
+ORDER BY updated_at DESC LIMIT $3
+`
+
+type SearchChatSessionsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Column2     pgtype.Text `json:"column_2"`
+	Limit       int32       `json:"limit"`
+}
+
+func (q *Queries) SearchChatSessions(ctx context.Context, arg SearchChatSessionsParams) ([]ChatSession, error) {
+	rows, err := q.db.Query(ctx, searchChatSessions, arg.WorkspaceID, arg.Column2, arg.Limit)
 	if err != nil {
 		return nil, err
 	}

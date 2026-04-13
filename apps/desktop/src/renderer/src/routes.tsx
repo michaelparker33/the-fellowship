@@ -16,6 +16,9 @@ import { SkillsPage } from "@multica/views/skills";
 import { AgentsPage } from "@multica/views/agents";
 import { InboxPage } from "@multica/views/inbox";
 import { SettingsPage } from "@multica/views/settings";
+import { EisenhowerPage } from "@multica/views/eisenhower";
+import { BrainDumpPage } from "@multica/views/brain-dump";
+import { EscalationsPage } from "@multica/views/escalations";
 
 /**
  * Sets document.title from the deepest matched route's handle.title.
@@ -81,7 +84,22 @@ export const appRoutes: RouteObject[] = [
       },
       { path: "skills", element: <SkillsPage />, handle: { title: "Skills" } },
       { path: "agents", element: <AgentsPage />, handle: { title: "Agents" } },
+      {
+        path: "eisenhower",
+        element: <EisenhowerPage />,
+        handle: { title: "Eisenhower Matrix" },
+      },
       { path: "inbox", element: <InboxPage />, handle: { title: "Inbox" } },
+      {
+        path: "brain-dump",
+        element: <BrainDumpPage />,
+        handle: { title: "Brain Dump" },
+      },
+      {
+        path: "escalations",
+        element: <EscalationsPage />,
+        handle: { title: "Escalations" },
+      },
       {
         path: "settings",
         element: <SettingsPage />,

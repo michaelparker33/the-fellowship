@@ -62,3 +62,8 @@ SELECT session_id, work_dir FROM agent_task_queue
 WHERE chat_session_id = $1 AND status = 'completed' AND session_id IS NOT NULL
 ORDER BY completed_at DESC
 LIMIT 1;
+
+-- name: SearchChatSessions :many
+SELECT * FROM chat_session
+WHERE workspace_id = $1 AND title ILIKE '%' || $2 || '%' AND status = 'active'
+ORDER BY updated_at DESC LIMIT $3;

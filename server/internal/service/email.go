@@ -33,6 +33,7 @@ func NewEmailService() *EmailService {
 func (s *EmailService) SendVerificationCode(to, code string) error {
 	if s.client == nil {
 		fmt.Printf("[DEV] Verification code for %s: %s\n", to, code)
+		os.WriteFile("/tmp/dev-verification-code.txt", []byte(code), 0600)
 		return nil
 	}
 

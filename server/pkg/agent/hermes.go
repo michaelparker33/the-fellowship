@@ -5,10 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // hermesBackend implements Backend by spawning `hermes acp` and communicating
@@ -158,9 +162,10 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 			sessionID = opts.ResumeSessionID
 			_ = result
 		} else {
+			mcpServers := loadHermesMCPServers(b.cfg.Logger)
 			result, err := c.request(runCtx, "session/new", map[string]any{
 				"cwd":        cwd,
-				"mcpServers": []any{},
+				"mcpServers": mcpServers,
 			})
 			if err != nil {
 				finalStatus = "failed"
@@ -569,6 +574,73 @@ func (c *hermesClient) handleUsageUpdate(data json.RawMessage) {
 		c.usage.CacheReadTokens = msg.Usage.CachedReadTokens
 	}
 	c.usageMu.Unlock()
+}
+
+// ── MCP config loading ──
+
+// hermesMCPServer is a single MCP server entry for the ACP session/new call.
+type hermesMCPServer struct {
+	Name    string            `json:"name"`
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+// hermesConfigFile represents the top-level ~/.hermes/config.yaml structure.
+type hermesConfigFile struct {
+	MCPServers map[string]struct {
+		Command string            `yaml:"command"`
+		Args    []string          `yaml:"args"`
+		Env     map[string]string `yaml:"env"`
+	} `yaml:"mcp_servers"`
+}
+
+// loadHermesMCPServers reads ~/.hermes/config.yaml and returns the MCP server
+// entries formatted for the ACP session/new call. Returns an empty slice (not
+// nil) if the config is missing or unparseable — never errors out.
+func loadHermesMCPServers(logger interface{ Info(string, ...any) }) []hermesMCPServer {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return []hermesMCPServer{}
+	}
+
+	configPath := filepath.Join(home, ".hermes", "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return []hermesMCPServer{}
+	}
+
+	var cfg hermesConfigFile
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return []hermesMCPServer{}
+	}
+
+	servers := make([]hermesMCPServer, 0, len(cfg.MCPServers))
+	for name, s := range cfg.MCPServers {
+		entry := hermesMCPServer{
+			Name:    name,
+			Command: s.Command,
+			Args:    s.Args,
+		}
+		// Expand env var references (e.g. ${SLACK_BOT_TOKEN}) in env values.
+		if len(s.Env) > 0 {
+			entry.Env = make(map[string]string, len(s.Env))
+			for k, v := range s.Env {
+				entry.Env[k] = os.ExpandEnv(v)
+			}
+		}
+		servers = append(servers, entry)
+	}
+
+	if len(servers) > 0 {
+		names := make([]string, len(servers))
+		for i, s := range servers {
+			names[i] = s.Name
+		}
+		logger.Info("loaded MCP servers from ~/.hermes/config.yaml", "count", len(servers), "servers", names)
+	}
+
+	return servers
 }
 
 // ── Helpers ──

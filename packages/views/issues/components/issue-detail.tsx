@@ -15,6 +15,7 @@ import {
   Pin,
   PinOff,
   Plus,
+  Target,
   Trash2,
   UserMinus,
   Users,
@@ -82,6 +83,8 @@ import { timeAgo } from "@multica/core/utils";
 import { cn } from "@multica/ui/lib/utils";
 import { pinListOptions } from "@multica/core/pins";
 import { useCreatePin, useDeletePin } from "@multica/core/pins";
+import { goalsOptions, goalChainOptions } from "@multica/core/goals/queries";
+import { useSetIssueGoal } from "@multica/core/goals/mutations";
 
 import { ProgressRing } from "./progress-ring";
 
@@ -268,6 +271,12 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
   const isPinned = pinnedItems.some((p) => p.item_type === "issue" && p.item_id === id);
   const createPin = useCreatePin();
   const deletePin = useDeletePin();
+
+  // Goal queries
+  const { data: goals = [] } = useQuery(goalsOptions(wsId));
+  const { data: goalChain = [] } = useQuery(goalChainOptions(issue?.goal_id));
+  const setIssueGoal = useSetIssueGoal(wsId);
+  const [goalPickerOpen, setGoalPickerOpen] = useState(false);
 
   // Sub-issue queries
   const parentIssueId = issue?.parent_issue_id;
@@ -1225,8 +1234,80 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                   onUpdate={handleUpdateField}
                 />
               </PropRow>
+
+              {/* Goal */}
+              <PropRow label="Goal">
+                <Popover open={goalPickerOpen} onOpenChange={setGoalPickerOpen}>
+                  <PopoverTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors min-w-0 max-w-full">
+                    <Target className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate">
+                      {issue.goal_id
+                        ? (goals.find((g) => g.id === issue.goal_id)?.title ?? "Set goal")
+                        : "Set goal"}
+                    </span>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-64 p-0">
+                    <Command>
+                      <CommandInput placeholder="Search goals..." />
+                      <CommandList className="max-h-64">
+                        <CommandEmpty>No goals found</CommandEmpty>
+                        <CommandGroup>
+                          {issue.goal_id && (
+                            <CommandItem
+                              onSelect={() => {
+                                setIssueGoal.mutate({ issueId: id, goalId: null });
+                                setGoalPickerOpen(false);
+                              }}
+                            >
+                              <span className="text-muted-foreground">Remove goal</span>
+                            </CommandItem>
+                          )}
+                          {goals.map((g) => (
+                            <CommandItem
+                              key={g.id}
+                              onSelect={() => {
+                                setIssueGoal.mutate({ issueId: id, goalId: g.id });
+                                setGoalPickerOpen(false);
+                              }}
+                            >
+                              <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <span className="truncate flex-1">{g.title}</span>
+                              {issue.goal_id === g.id && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
+              </PropRow>
             </div>}
           </div>
+
+          {/* Goal ancestry chain */}
+          {goalChain.length > 0 && (
+            <div>
+              <div className="text-xs font-medium mb-2 flex items-center gap-1">
+                <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                Goal ancestry
+              </div>
+              <div className="pl-2 space-y-1">
+                {goalChain.map((g, idx) => (
+                  <div
+                    key={g.id}
+                    className="flex items-center gap-1.5 text-xs rounded-md px-2 py-1 -mx-2"
+                    style={{ paddingLeft: `${0.5 + idx * 0.75}rem` }}
+                  >
+                    {idx > 0 && <span className="text-muted-foreground shrink-0">↳</span>}
+                    <Target className={`h-3 w-3 shrink-0 ${g.id === issue.goal_id ? "text-amber-400" : "text-muted-foreground"}`} />
+                    <span className={`truncate ${g.id === issue.goal_id ? "font-medium" : "text-muted-foreground"}`}>
+                      {g.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Parent issue */}
           {parentIssue && (

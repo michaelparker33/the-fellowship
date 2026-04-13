@@ -135,7 +135,8 @@ export function InboxPage() {
   const listHeader = (
     <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
       <div className="flex items-center gap-2">
-        <h1 className="text-sm font-semibold">Inbox</h1>
+        <Inbox className="h-4 w-4 text-muted-foreground" />
+        <h1 className="text-sm font-medium">Inbox</h1>
         {unreadCount > 0 && (
           <span className="text-xs text-muted-foreground">
             {unreadCount}

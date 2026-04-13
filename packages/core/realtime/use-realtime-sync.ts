@@ -21,6 +21,10 @@ import {
 import { onInboxNew, onInboxInvalidate, onInboxIssueStatusChanged } from "../inbox/ws-updaters";
 import { inboxKeys } from "../inbox/queries";
 import { workspaceKeys } from "../workspace/queries";
+import { councilKeys } from "../council/queries";
+import { watchKeys } from "../watch/queries";
+import { safetyKeys } from "../safety/queries";
+import { achievementKeys } from "../achievements/queries";
 import type {
   MemberAddedPayload,
   WorkspaceDeletedPayload,
@@ -108,6 +112,22 @@ export function useRealtimeSync(
         const wsId = workspaceStore.getState().workspace?.id;
         if (wsId) qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
       },
+      approval: () => {
+        const wsId = workspaceStore.getState().workspace?.id;
+        if (wsId) qc.invalidateQueries({ queryKey: councilKeys.all(wsId) });
+      },
+      watch: () => {
+        const wsId = workspaceStore.getState().workspace?.id;
+        if (wsId) qc.invalidateQueries({ queryKey: watchKeys.all(wsId) });
+      },
+      safety: () => {
+        const wsId = workspaceStore.getState().workspace?.id;
+        if (wsId) qc.invalidateQueries({ queryKey: safetyKeys.all(wsId) });
+      },
+      achievement: () => {
+        const wsId = workspaceStore.getState().workspace?.id;
+        if (wsId) qc.invalidateQueries({ queryKey: achievementKeys.all(wsId) });
+      },
     };
 
     const timers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -132,6 +152,7 @@ export function useRealtimeSync(
       "issue_reaction:added", "issue_reaction:removed",
       "subscriber:added", "subscriber:removed",
       "daemon:heartbeat",
+      "achievement:unlocked",
     ]);
 
     const unsubAny = ws.onAny((msg) => {
@@ -241,6 +262,14 @@ export function useRealtimeSync(
       if (issue_id) qc.invalidateQueries({ queryKey: issueKeys.subscribers(issue_id) });
     });
 
+    // --- Achievement unlocked handler ---
+    const unsubAchievementUnlocked = ws.on("achievement:unlocked", (p) => {
+      const { achievement_key } = p as { achievement_key: string };
+      const wsId = workspaceStore.getState().workspace?.id;
+      if (wsId) qc.invalidateQueries({ queryKey: achievementKeys.all(wsId) });
+      onToast?.(`Achievement unlocked: ${achievement_key.replace(/_/g, " ")}`, "info");
+    });
+
     // --- Side-effect handlers (toast, navigation) ---
 
     const unsubWsDeleted = ws.on("workspace:deleted", (p) => {
@@ -279,6 +308,7 @@ export function useRealtimeSync(
     });
 
     return () => {
+      unsubAchievementUnlocked();
       unsubAny();
       unsubIssueUpdated();
       unsubIssueCreated();

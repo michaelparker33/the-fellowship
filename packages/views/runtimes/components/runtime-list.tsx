@@ -1,4 +1,4 @@
-import { Server, ArrowUpCircle, ChevronDown, Check } from "lucide-react";
+import { Server, Monitor, ArrowUpCircle, ChevronDown, Check } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import type { AgentRuntime, MemberWithUser } from "@multica/core/types";
 import { useWorkspaceId } from "@multica/core/hooks";
@@ -121,7 +121,10 @@ export function RuntimeList({
   return (
     <div className="overflow-y-auto h-full border-r">
       <div className="flex h-12 items-center justify-between border-b px-4">
-        <h1 className="text-sm font-semibold">Runtimes</h1>
+        <div className="flex items-center gap-2">
+          <Monitor className="h-4 w-4 text-muted-foreground" />
+          <h1 className="text-sm font-medium">Runtimes</h1>
+        </div>
         <span className="text-xs text-muted-foreground">
           {filteredRuntimes.filter((r) => r.status === "online").length}/
           {filteredRuntimes.length} online

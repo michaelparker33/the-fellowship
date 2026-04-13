@@ -42,6 +42,11 @@ type IssueResponse struct {
 	UpdatedAt          string                  `json:"updated_at"`
 	Reactions          []IssueReactionResponse `json:"reactions,omitempty"`
 	Attachments        []AttachmentResponse    `json:"attachments,omitempty"`
+	GoalID             *string                 `json:"goal_id,omitempty"`
+	ClaimedBy          *string                 `json:"claimed_by,omitempty"`
+	ClaimedAt          *string                 `json:"claimed_at,omitempty"`
+	ClaimVersion       int32                   `json:"claim_version"`
+	EisenhowerQuadrant *string                 `json:"eisenhower_quadrant,omitempty"`
 }
 
 func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
@@ -65,6 +70,11 @@ func issueToResponse(i db.Issue, issuePrefix string) IssueResponse {
 		DueDate:       timestampToPtr(i.DueDate),
 		CreatedAt:     timestampToString(i.CreatedAt),
 		UpdatedAt:     timestampToString(i.UpdatedAt),
+		GoalID:             uuidToPtr(i.GoalID),
+		ClaimedBy:          uuidToPtr(i.ClaimedBy),
+		ClaimedAt:          timestampToPtr(i.ClaimedAt),
+		ClaimVersion:       i.ClaimVersion,
+		EisenhowerQuadrant: textToPtr(i.EisenhowerQuadrant),
 	}
 }
 
@@ -86,9 +96,10 @@ func issueListRowToResponse(i db.ListIssuesRow, issuePrefix string) IssueRespons
 		ParentIssueID: uuidToPtr(i.ParentIssueID),
 		ProjectID:     uuidToPtr(i.ProjectID),
 		Position:      i.Position,
-		DueDate:       timestampToPtr(i.DueDate),
-		CreatedAt:     timestampToString(i.CreatedAt),
-		UpdatedAt:     timestampToString(i.UpdatedAt),
+		DueDate:            timestampToPtr(i.DueDate),
+		CreatedAt:          timestampToString(i.CreatedAt),
+		UpdatedAt:          timestampToString(i.UpdatedAt),
+		EisenhowerQuadrant: textToPtr(i.EisenhowerQuadrant),
 	}
 }
 
@@ -109,9 +120,10 @@ func openIssueRowToResponse(i db.ListOpenIssuesRow, issuePrefix string) IssueRes
 		ParentIssueID: uuidToPtr(i.ParentIssueID),
 		ProjectID:     uuidToPtr(i.ProjectID),
 		Position:      i.Position,
-		DueDate:       timestampToPtr(i.DueDate),
-		CreatedAt:     timestampToString(i.CreatedAt),
-		UpdatedAt:     timestampToString(i.UpdatedAt),
+		DueDate:            timestampToPtr(i.DueDate),
+		CreatedAt:          timestampToString(i.CreatedAt),
+		UpdatedAt:          timestampToString(i.UpdatedAt),
+		EisenhowerQuadrant: textToPtr(i.EisenhowerQuadrant),
 	}
 }
 
@@ -893,16 +905,17 @@ func (h *Handler) CreateIssue(w http.ResponseWriter, r *http.Request) {
 }
 
 type UpdateIssueRequest struct {
-	Title              *string  `json:"title"`
-	Description        *string  `json:"description"`
-	Status             *string  `json:"status"`
-	Priority           *string  `json:"priority"`
-	AssigneeType       *string  `json:"assignee_type"`
-	AssigneeID         *string  `json:"assignee_id"`
-	Position           *float64 `json:"position"`
-	DueDate            *string  `json:"due_date"`
-	ParentIssueID      *string  `json:"parent_issue_id"`
-	ProjectID          *string  `json:"project_id"`
+	Title               *string  `json:"title"`
+	Description         *string  `json:"description"`
+	Status              *string  `json:"status"`
+	Priority            *string  `json:"priority"`
+	AssigneeType        *string  `json:"assignee_type"`
+	AssigneeID          *string  `json:"assignee_id"`
+	Position            *float64 `json:"position"`
+	DueDate             *string  `json:"due_date"`
+	ParentIssueID       *string  `json:"parent_issue_id"`
+	ProjectID           *string  `json:"project_id"`
+	EisenhowerQuadrant  *string  `json:"eisenhower_quadrant"`
 }
 
 func (h *Handler) UpdateIssue(w http.ResponseWriter, r *http.Request) {

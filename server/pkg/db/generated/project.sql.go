@@ -214,6 +214,50 @@ func (q *Queries) ListProjects(ctx context.Context, arg ListProjectsParams) ([]P
 	return items, nil
 }
 
+const quickSearchProjects = `-- name: QuickSearchProjects :many
+SELECT id, workspace_id, title, description, icon, status, lead_type, lead_id, created_at, updated_at, priority FROM project
+WHERE workspace_id = $1 AND (title ILIKE '%' || $2 || '%' OR description::text ILIKE '%' || $2 || '%')
+ORDER BY created_at DESC LIMIT $3
+`
+
+type QuickSearchProjectsParams struct {
+	WorkspaceID pgtype.UUID `json:"workspace_id"`
+	Column2     pgtype.Text `json:"column_2"`
+	Limit       int32       `json:"limit"`
+}
+
+func (q *Queries) QuickSearchProjects(ctx context.Context, arg QuickSearchProjectsParams) ([]Project, error) {
+	rows, err := q.db.Query(ctx, quickSearchProjects, arg.WorkspaceID, arg.Column2, arg.Limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []Project{}
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.Title,
+			&i.Description,
+			&i.Icon,
+			&i.Status,
+			&i.LeadType,
+			&i.LeadID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Priority,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateProject = `-- name: UpdateProject :one
 UPDATE project SET
     title = COALESCE($2, title),

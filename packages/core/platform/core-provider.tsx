@@ -62,6 +62,7 @@ export function CoreProvider({
   storage = defaultStorage,
   onLogin,
   onLogout,
+  autoLogin,
 }: CoreProviderProps) {
   // Initialize singletons on first render only. Dependencies are read-once:
   // apiBaseUrl, storage, and callbacks are set at app boot and never change at runtime.
@@ -70,7 +71,7 @@ export function CoreProvider({
 
   return (
     <QueryProvider>
-      <AuthInitializer onLogin={onLogin} onLogout={onLogout} storage={storage}>
+      <AuthInitializer onLogin={onLogin} onLogout={onLogout} storage={storage} autoLogin={autoLogin}>
         <WSProvider
           wsUrl={wsUrl}
           authStore={authStore}

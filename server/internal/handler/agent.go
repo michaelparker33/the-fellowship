@@ -93,6 +93,12 @@ type AgentTaskResponse struct {
 	TriggerCommentID *string        `json:"trigger_comment_id,omitempty"` // comment that triggered this task
 	ChatSessionID    string         `json:"chat_session_id,omitempty"`    // non-empty for chat tasks
 	ChatMessage      string         `json:"chat_message,omitempty"`       // user message for chat tasks
+	// Session resilience / continuation fields
+	ContinuationOf    *string `json:"continuation_of,omitempty"`
+	ContinuationIndex int32   `json:"continuation_index"`
+	MaxContinuations  int32   `json:"max_continuations"`
+	ProgressNotes     string  `json:"progress_notes,omitempty"`
+	FailureReason     *string `json:"failure_reason,omitempty"`
 }
 
 // TaskAgentData holds agent info included in claim responses so the daemon
@@ -120,9 +126,14 @@ func taskToResponse(t db.AgentTaskQueue) AgentTaskResponse {
 		StartedAt:    timestampToPtr(t.StartedAt),
 		CompletedAt:  timestampToPtr(t.CompletedAt),
 		Result:       result,
-		Error:            textToPtr(t.Error),
-		CreatedAt:        timestampToString(t.CreatedAt),
-		TriggerCommentID: uuidToPtr(t.TriggerCommentID),
+		Error:             textToPtr(t.Error),
+		CreatedAt:         timestampToString(t.CreatedAt),
+		TriggerCommentID:  uuidToPtr(t.TriggerCommentID),
+		ContinuationOf:    uuidToPtr(t.ContinuationOf),
+		ContinuationIndex: t.ContinuationIndex,
+		MaxContinuations:  t.MaxContinuations,
+		ProgressNotes:     t.ProgressNotes,
+		FailureReason:     textToPtr(t.FailureReason),
 	}
 }
 

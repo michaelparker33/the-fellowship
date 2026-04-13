@@ -15,14 +15,42 @@ export function AuthInitializer({
   onLogin,
   onLogout,
   storage = defaultStorage,
+  autoLogin,
 }: {
   children: ReactNode;
   onLogin?: () => void;
   onLogout?: () => void;
   storage?: StorageAdapter;
+  /** When true, auto-login as dev user if no token exists (local dev only). */
+  autoLogin?: boolean;
 }) {
   useEffect(() => {
     const token = storage.getItem("multica_token");
+
+    if (!token && autoLogin) {
+      // Dev auto-login: call the dev-login endpoint, store the token, and hydrate
+      const api = getApi();
+      api
+        .devLogin("michaelparker@ciwebgroup.com", "Michael Parker")
+        .then(({ token: newToken, user }) => {
+          storage.setItem("multica_token", newToken);
+          api.setToken(newToken);
+
+          return api.listWorkspaces().then((wsList) => {
+            const wsId = storage.getItem("multica_workspace_id");
+            onLogin?.();
+            useAuthStore.setState({ user, isLoading: false });
+            useWorkspaceStore.getState().hydrateWorkspace(wsList, wsId);
+          });
+        })
+        .catch((err) => {
+          logger.error("dev auto-login failed", err);
+          onLogout?.();
+          useAuthStore.setState({ user: null, isLoading: false });
+        });
+      return;
+    }
+
     if (!token) {
       onLogout?.();
       useAuthStore.setState({ isLoading: false });

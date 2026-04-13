@@ -14,10 +14,12 @@ import {
   Monitor,
   BookOpenText,
   Settings,
+  Target,
+  Lightbulb,
   type LucideIcon,
 } from "lucide-react";
 import { Command as CommandPrimitive } from "cmdk";
-import type { SearchIssueResult, SearchProjectResult } from "@multica/core/types";
+import type { UnifiedSearchResponse, IssueStatus } from "@multica/core/types";
 import { api } from "@multica/core/api";
 import { useRecentIssuesStore } from "@multica/core/issues/stores";
 import { StatusIcon } from "../issues/components";
@@ -88,10 +90,11 @@ const navPages: NavPage[] = [
   { href: "/settings", label: "Settings", icon: Settings, keywords: ["settings", "config", "preferences"] },
 ];
 
-interface SearchResults {
-  issues: SearchIssueResult[];
-  projects: SearchProjectResult[];
-}
+const groupHeadingClass =
+  "p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground";
+
+const itemClass =
+  "flex cursor-default select-none items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent";
 
 export function SearchCommand() {
   const { push } = useNavigation();
@@ -99,7 +102,7 @@ export function SearchCommand() {
   const setOpen = useSearchStore((s) => s.setOpen);
   const recentIssues = useRecentIssuesStore((s) => s.items);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<SearchResults>({ issues: [], projects: [] });
+  const [results, setResults] = useState<UnifiedSearchResponse>({});
   const [isLoading, setIsLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -114,7 +117,13 @@ export function SearchCommand() {
     );
   }, [query]);
 
-  const hasResults = results.issues.length > 0 || results.projects.length > 0;
+  const hasResults =
+    (results.issues?.length ?? 0) > 0 ||
+    (results.projects?.length ?? 0) > 0 ||
+    (results.goals?.length ?? 0) > 0 ||
+    (results.brain_dumps?.length ?? 0) > 0 ||
+    (results.agents?.length ?? 0) > 0 ||
+    (results.chats?.length ?? 0) > 0;
 
   // Global Cmd+K / Ctrl+K shortcut
   useEffect(() => {
@@ -154,7 +163,7 @@ export function SearchCommand() {
   useEffect(() => {
     if (!open) {
       setQuery("");
-      setResults({ issues: [], projects: [] });
+      setResults({});
       setIsLoading(false);
     }
   }, [open]);
@@ -164,7 +173,7 @@ export function SearchCommand() {
     if (abortRef.current) abortRef.current.abort();
 
     if (!q.trim()) {
-      setResults({ issues: [], projects: [] });
+      setResults({});
       setIsLoading(false);
       return;
     }
@@ -174,25 +183,13 @@ export function SearchCommand() {
       const controller = new AbortController();
       abortRef.current = controller;
       try {
-        const [issueRes, projectRes] = await Promise.all([
-          api.searchIssues({
-            q: q.trim(),
-            limit: 20,
-            include_closed: true,
-            signal: controller.signal,
-          }),
-          api.searchProjects({
-            q: q.trim(),
-            limit: 10,
-            include_closed: true,
-            signal: controller.signal,
-          }),
-        ]);
+        const res = await api.unifiedSearch({
+          q: q.trim(),
+          limit: 5,
+          signal: controller.signal,
+        });
         if (!controller.signal.aborted) {
-          setResults({
-            issues: issueRes.issues,
-            projects: projectRes.projects,
-          });
+          setResults(res);
           setIsLoading(false);
         }
       } catch {
@@ -216,6 +213,14 @@ export function SearchCommand() {
       setOpen(false);
       if (value.startsWith("project:")) {
         push(`/projects/${value.slice(8)}`);
+      } else if (value.startsWith("goal:")) {
+        push("/issues");
+      } else if (value.startsWith("braindump:")) {
+        push("/brain-dump");
+      } else if (value.startsWith("agent:")) {
+        push(`/agents/${value.slice(6)}`);
+      } else if (value.startsWith("chat:")) {
+        push(`/chat?session=${value.slice(5)}`);
       } else {
         push(`/issues/${value}`);
       }
@@ -240,7 +245,7 @@ export function SearchCommand() {
         <DialogHeader className="sr-only">
           <DialogTitle>Search</DialogTitle>
           <DialogDescription>
-            Search pages, issues, and projects
+            Search pages, issues, projects, goals, agents, and more
           </DialogDescription>
         </DialogHeader>
         <CommandPrimitive
@@ -274,7 +279,7 @@ export function SearchCommand() {
                     key={page.href}
                     value={`page:${page.href}`}
                     onSelect={() => handlePageSelect(page.href)}
-                    className="flex cursor-default select-none items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent"
+                    className={itemClass}
                   >
                     <page.icon className="size-4 shrink-0 text-muted-foreground" />
                     <span className="truncate">
@@ -297,93 +302,147 @@ export function SearchCommand() {
               </CommandPrimitive.Empty>
             )}
 
-            {!isLoading && results.projects.length > 0 && (
-              <CommandPrimitive.Group
-                heading="Projects"
-                className="p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
-              >
-                {results.projects.map((project) => (
-                  <CommandPrimitive.Item
-                    key={`project:${project.id}`}
-                    value={`project:${project.id}`}
-                    onSelect={handleSelect}
-                    className="flex cursor-default select-none flex-col gap-1 rounded-lg px-3 py-2.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="size-4 shrink-0 text-center text-sm leading-4">
-                        {project.icon || <FolderKanban className="size-4 text-muted-foreground" />}
-                      </span>
-                      <span className="truncate">
-                        <HighlightText text={project.title} query={query} />
-                      </span>
-                      <span
-                        className={`ml-auto text-xs shrink-0 ${PROJECT_STATUS_CONFIG[project.status as ProjectStatus]?.color ?? "text-muted-foreground"}`}
-                      >
-                        {PROJECT_STATUS_CONFIG[project.status as ProjectStatus]?.label ?? project.status}
-                      </span>
-                    </div>
-                    {project.match_source === "description" &&
-                      project.matched_snippet && (
-                        <div className="flex items-start gap-2 pl-[26px]">
-                          <span className="text-xs text-muted-foreground truncate">
-                            <HighlightText
-                              text={project.matched_snippet}
-                              query={query}
-                            />
-                          </span>
-                        </div>
-                      )}
-                  </CommandPrimitive.Item>
-                ))}
-              </CommandPrimitive.Group>
-            )}
-
-            {!isLoading && results.issues.length > 0 && (
-              <CommandPrimitive.Group
-                heading="Issues"
-                className="p-2 [&_[cmdk-group-heading]]:px-3 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground"
-              >
-                {results.issues.map((issue) => (
+            {/* Issues */}
+            {!isLoading && (results.issues?.length ?? 0) > 0 && (
+              <CommandPrimitive.Group heading="Issues" className={groupHeadingClass}>
+                {results.issues!.map((issue) => (
                   <CommandPrimitive.Item
                     key={issue.id}
                     value={issue.id}
                     onSelect={handleSelect}
-                    className="flex cursor-default select-none flex-col gap-1 rounded-lg px-3 py-2.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent"
+                    className={itemClass}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <StatusIcon
-                        status={issue.status}
-                        className="size-4 shrink-0"
-                      />
-                      <span className="text-xs text-muted-foreground shrink-0">
-                        {issue.identifier}
-                      </span>
-                      <span className="truncate">
-                        <HighlightText text={issue.title} query={query} />
-                      </span>
-                      <span
-                        className={`ml-auto text-xs shrink-0 ${STATUS_CONFIG[issue.status].iconColor}`}
-                      >
-                        {STATUS_CONFIG[issue.status].label}
-                      </span>
-                    </div>
-                    {issue.match_source === "comment" &&
-                      issue.matched_snippet && (
-                        <div className="flex items-start gap-2 pl-[26px]">
-                          <MessageSquare className="size-3 shrink-0 text-muted-foreground mt-0.5" />
-                          <span className="text-xs text-muted-foreground truncate">
-                            <HighlightText
-                              text={issue.matched_snippet}
-                              query={query}
-                            />
-                          </span>
-                        </div>
-                      )}
+                    <StatusIcon
+                      status={issue.status as IssueStatus}
+                      className="size-4 shrink-0"
+                    />
+                    <span className="text-xs text-muted-foreground shrink-0">
+                      {issue.identifier}
+                    </span>
+                    <span className="truncate">
+                      <HighlightText text={issue.title} query={query} />
+                    </span>
+                    <span
+                      className={`ml-auto text-xs shrink-0 ${STATUS_CONFIG[issue.status as IssueStatus]?.iconColor ?? "text-muted-foreground"}`}
+                    >
+                      {STATUS_CONFIG[issue.status as IssueStatus]?.label ?? issue.status}
+                    </span>
                   </CommandPrimitive.Item>
                 ))}
               </CommandPrimitive.Group>
             )}
 
+            {/* Projects */}
+            {!isLoading && (results.projects?.length ?? 0) > 0 && (
+              <CommandPrimitive.Group heading="Projects" className={groupHeadingClass}>
+                {results.projects!.map((project) => (
+                  <CommandPrimitive.Item
+                    key={`project:${project.id}`}
+                    value={`project:${project.id}`}
+                    onSelect={handleSelect}
+                    className={itemClass}
+                  >
+                    <span className="size-4 shrink-0 text-center text-sm leading-4">
+                      {project.icon || <FolderKanban className="size-4 text-muted-foreground" />}
+                    </span>
+                    <span className="truncate">
+                      <HighlightText text={project.name} query={query} />
+                    </span>
+                    <span
+                      className={`ml-auto text-xs shrink-0 ${PROJECT_STATUS_CONFIG[project.status as ProjectStatus]?.color ?? "text-muted-foreground"}`}
+                    >
+                      {PROJECT_STATUS_CONFIG[project.status as ProjectStatus]?.label ?? project.status}
+                    </span>
+                  </CommandPrimitive.Item>
+                ))}
+              </CommandPrimitive.Group>
+            )}
+
+            {/* Goals */}
+            {!isLoading && (results.goals?.length ?? 0) > 0 && (
+              <CommandPrimitive.Group heading="Goals" className={groupHeadingClass}>
+                {results.goals!.map((goal) => (
+                  <CommandPrimitive.Item
+                    key={`goal:${goal.id}`}
+                    value={`goal:${goal.id}`}
+                    onSelect={handleSelect}
+                    className={itemClass}
+                  >
+                    <Target className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">
+                      <HighlightText text={goal.title} query={query} />
+                    </span>
+                  </CommandPrimitive.Item>
+                ))}
+              </CommandPrimitive.Group>
+            )}
+
+            {/* Brain Dumps */}
+            {!isLoading && (results.brain_dumps?.length ?? 0) > 0 && (
+              <CommandPrimitive.Group heading="Brain Dumps" className={groupHeadingClass}>
+                {results.brain_dumps!.map((dump) => (
+                  <CommandPrimitive.Item
+                    key={`braindump:${dump.id}`}
+                    value={`braindump:${dump.id}`}
+                    onSelect={handleSelect}
+                    className={itemClass}
+                  >
+                    <Lightbulb className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">
+                      <HighlightText text={dump.content} query={query} />
+                    </span>
+                    {dump.processed && (
+                      <span className="ml-auto text-xs shrink-0 text-muted-foreground">
+                        processed
+                      </span>
+                    )}
+                  </CommandPrimitive.Item>
+                ))}
+              </CommandPrimitive.Group>
+            )}
+
+            {/* Agents */}
+            {!isLoading && (results.agents?.length ?? 0) > 0 && (
+              <CommandPrimitive.Group heading="Agents" className={groupHeadingClass}>
+                {results.agents!.map((agent) => (
+                  <CommandPrimitive.Item
+                    key={`agent:${agent.id}`}
+                    value={`agent:${agent.id}`}
+                    onSelect={handleSelect}
+                    className={itemClass}
+                  >
+                    <Bot className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">
+                      <HighlightText text={agent.name} query={query} />
+                    </span>
+                    <span className="ml-auto text-xs shrink-0 text-muted-foreground">
+                      {agent.runtime_mode}
+                    </span>
+                  </CommandPrimitive.Item>
+                ))}
+              </CommandPrimitive.Group>
+            )}
+
+            {/* Chats */}
+            {!isLoading && (results.chats?.length ?? 0) > 0 && (
+              <CommandPrimitive.Group heading="Chats" className={groupHeadingClass}>
+                {results.chats!.map((chat) => (
+                  <CommandPrimitive.Item
+                    key={`chat:${chat.id}`}
+                    value={`chat:${chat.id}`}
+                    onSelect={handleSelect}
+                    className={itemClass}
+                  >
+                    <MessageSquare className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">
+                      <HighlightText text={chat.title} query={query} />
+                    </span>
+                  </CommandPrimitive.Item>
+                ))}
+              </CommandPrimitive.Group>
+            )}
+
+            {/* Recent issues — shown when no query */}
             {!isLoading && !query.trim() && recentIssues.length > 0 && (
               <CommandPrimitive.Group className="p-2">
                 <div className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-muted-foreground">
@@ -395,7 +454,7 @@ export function SearchCommand() {
                     key={item.id}
                     value={item.id}
                     onSelect={handleSelect}
-                    className="flex cursor-default select-none items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm outline-none data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 data-selected:bg-accent"
+                    className={itemClass}
                   >
                     <StatusIcon
                       status={item.status}
@@ -417,8 +476,8 @@ export function SearchCommand() {
 
             {!isLoading && !query.trim() && recentIssues.length === 0 && (
               <div className="flex flex-col items-center gap-2 py-10 text-sm text-muted-foreground">
-                <span>Type to search issues and projects...</span>
-                <span className="text-xs">Press <kbd className="rounded bg-muted px-1.5 py-0.5 font-medium">⌘K</kbd> to open this anytime</span>
+                <span>Type to search issues, projects, agents, and more...</span>
+                <span className="text-xs">Press <kbd className="rounded bg-muted px-1.5 py-0.5 font-medium">&#8984;K</kbd> to open this anytime</span>
               </div>
             )}
           </CommandPrimitive.List>

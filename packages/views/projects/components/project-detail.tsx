@@ -52,6 +52,7 @@ import {
   TooltipContent,
 } from "@multica/ui/components/ui/tooltip";
 import { EmojiPicker } from "@multica/ui/components/common/emoji-picker";
+import { MissionControl } from "../../missions/components/mission-control";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -313,7 +314,8 @@ export function ProjectDetail({ projectId }: { projectId: string }) {
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          <MissionControl projectId={projectId} />
           <Button
             variant="ghost"
             size="icon-xs"

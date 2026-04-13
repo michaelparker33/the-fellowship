@@ -279,6 +279,61 @@ func (h *Handler) GetWorkspaceUsageSummary(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// GetWorkspaceUsageByAgent returns usage grouped by agent for the workspace.
+func (h *Handler) GetWorkspaceUsageByAgent(w http.ResponseWriter, r *http.Request) {
+	workspaceID := resolveWorkspaceID(r)
+	since := parseSinceParam(r, 30)
+
+	rows, err := h.Queries.GetWorkspaceUsageByAgent(r.Context(), db.GetWorkspaceUsageByAgentParams{
+		WorkspaceID: parseUUID(workspaceID),
+		Since:       since,
+	})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get usage by agent")
+		return
+	}
+
+	type AgentUsageRow struct {
+		AgentID           string  `json:"agent_id"`
+		AgentName         string  `json:"agent_name"`
+		Model             string  `json:"model"`
+		TotalInputTokens  int64   `json:"total_input_tokens"`
+		TotalOutputTokens int64   `json:"total_output_tokens"`
+		TotalCostUSD      float64 `json:"total_cost_usd"`
+		TaskCount         int32   `json:"task_count"`
+	}
+
+	resp := make([]AgentUsageRow, len(rows))
+	for i, row := range rows {
+		costFloat, _ := row.TotalCostUsd.Float64Value()
+		resp[i] = AgentUsageRow{
+			AgentID:           uuidToString(row.AgentID),
+			AgentName:         row.AgentName,
+			Model:             row.Model,
+			TotalInputTokens:  row.TotalInputTokens,
+			TotalOutputTokens: row.TotalOutputTokens,
+			TotalCostUSD:      costFloat.Float64,
+			TaskCount:         row.TaskCount,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+// GetWorkspaceDailySpend returns today's total spend for the workspace.
+func (h *Handler) GetWorkspaceDailySpend(w http.ResponseWriter, r *http.Request) {
+	workspaceID := resolveWorkspaceID(r)
+
+	costNum, err := h.Queries.GetWorkspaceDailySpend(r.Context(), parseUUID(workspaceID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get daily spend")
+		return
+	}
+
+	costFloat, _ := costNum.Float64Value()
+	writeJSON(w, http.StatusOK, map[string]any{"cost_usd": costFloat.Float64})
+}
+
 // parseSinceParam parses the "days" query parameter and returns a timestamptz.
 func parseSinceParam(r *http.Request, defaultDays int) pgtype.Timestamptz {
 	days := defaultDays

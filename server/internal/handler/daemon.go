@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/middleware"
+	"github.com/multica-ai/multica/server/internal/pricing"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 	"github.com/multica-ai/multica/server/pkg/redact"
@@ -572,6 +573,10 @@ func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, u := range req.Usage {
+		costUSD := pricing.CalculateCost(u.Model, int64(u.InputTokens), int64(u.OutputTokens), int64(u.CacheReadTokens), int64(u.CacheWriteTokens))
+		costNum := pgtype.Numeric{}
+		costNum.Scan(fmt.Sprintf("%.6f", costUSD))
+
 		if err := h.Queries.UpsertTaskUsage(r.Context(), db.UpsertTaskUsageParams{
 			TaskID:           parseUUID(taskID),
 			Provider:         u.Provider,
@@ -580,6 +585,7 @@ func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 			OutputTokens:     u.OutputTokens,
 			CacheReadTokens:  u.CacheReadTokens,
 			CacheWriteTokens: u.CacheWriteTokens,
+			CostUsd:          costNum,
 		}); err != nil {
 			slog.Warn("upsert task usage failed", "task_id", taskID, "model", u.Model, "error", err)
 		}
@@ -621,15 +627,26 @@ func (h *Handler) FailTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	task, err := h.TaskService.FailTask(r.Context(), parseUUID(taskID), req.Error)
+	result, err := h.TaskService.FailTask(r.Context(), parseUUID(taskID), req.Error)
 	if err != nil {
 		slog.Warn("fail task failed", "task_id", taskID, "error", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.AgentID), "task_error", req.Error)
-	writeJSON(w, http.StatusOK, taskToResponse(*task))
+	resp := taskToResponse(*result.Task)
+	if result.ContinuationTask != nil {
+		contResp := taskToResponse(*result.ContinuationTask)
+		slog.Info("task failed with continuation", "task_id", taskID, "continuation_task_id", contResp.ID, "task_error", req.Error)
+		writeJSON(w, http.StatusOK, map[string]any{
+			"task":              resp,
+			"continuation_task": contResp,
+		})
+		return
+	}
+
+	slog.Info("task failed", "task_id", taskID, "agent_id", resp.AgentID, "task_error", req.Error)
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ---------------------------------------------------------------------------
@@ -841,4 +858,50 @@ func (h *Handler) GetIssueUsage(w http.ResponseWriter, r *http.Request) {
 		"total_cache_write_tokens": row.TotalCacheWriteTokens,
 		"task_count":               row.TaskCount,
 	})
+}
+
+// GetTaskContinuationChain returns the full chain of continuation tasks for debugging.
+func (h *Handler) GetTaskContinuationChain(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	chain, err := h.Queries.GetTaskContinuationChain(r.Context(), parseUUID(taskID))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to get continuation chain")
+		return
+	}
+
+	resp := make([]AgentTaskResponse, len(chain))
+	for i, row := range chain {
+		resp[i] = chainRowToResponse(row)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"tasks": resp})
+}
+
+// chainRowToResponse converts a GetTaskContinuationChainRow to AgentTaskResponse.
+func chainRowToResponse(row db.GetTaskContinuationChainRow) AgentTaskResponse {
+	var result any
+	if row.Result != nil {
+		json.Unmarshal(row.Result, &result)
+	}
+	return AgentTaskResponse{
+		ID:                uuidToString(row.ID),
+		AgentID:           uuidToString(row.AgentID),
+		RuntimeID:         uuidToString(row.RuntimeID),
+		IssueID:           uuidToString(row.IssueID),
+		Status:            row.Status,
+		Priority:          row.Priority,
+		DispatchedAt:      timestampToPtr(row.DispatchedAt),
+		StartedAt:         timestampToPtr(row.StartedAt),
+		CompletedAt:       timestampToPtr(row.CompletedAt),
+		Result:            result,
+		Error:             textToPtr(row.Error),
+		CreatedAt:         timestampToString(row.CreatedAt),
+		TriggerCommentID:  uuidToPtr(row.TriggerCommentID),
+		ContinuationOf:    uuidToPtr(row.ContinuationOf),
+		ContinuationIndex: row.ContinuationIndex,
+		MaxContinuations:  row.MaxContinuations,
+		ProgressNotes:     row.ProgressNotes,
+		FailureReason:     textToPtr(row.FailureReason),
+	}
 }

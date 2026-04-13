@@ -11,9 +11,12 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/multica-ai/multica/server/internal/achievements"
 	"github.com/multica-ai/multica/server/internal/events"
+	"github.com/multica-ai/multica/server/internal/handler"
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/realtime"
+	"github.com/multica-ai/multica/server/internal/scheduler"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 )
 
@@ -66,6 +69,16 @@ func main() {
 	registerActivityListeners(bus, queries)
 	registerNotificationListeners(bus, queries)
 
+	// Wire up achievement checker
+	achievementChecker := achievements.New(queries, bus)
+	achievementChecker.RegisterListeners()
+
+	// Start the scheduled task scheduler (The Watch)
+	issueCreator := scheduler.NewIssueCreator(queries, pool, bus)
+	sched := scheduler.New(queries, bus, issueCreator)
+	sched.Start(ctx)
+	handler.ScheduledTaskScheduler = sched
+
 	r := NewRouter(pool, hub, bus)
 
 	srv := &http.Server{
@@ -91,6 +104,7 @@ func main() {
 	<-quit
 
 	slog.Info("shutting down server")
+	sched.Stop()
 	sweepCancel()
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -74,4 +74,31 @@ const (
 	// Daemon events
 	EventDaemonHeartbeat = "daemon:heartbeat"
 	EventDaemonRegister  = "daemon:register"
+
+	// Approval events (The Council)
+	EventApprovalCreated          = "approval:created"
+	EventApprovalDecided          = "approval:decided"
+	EventApprovalExecutionTrigger = "approval:execution_trigger"
+	EventApprovalDebated          = "approval:debated"
+	EventDebateRequested          = "approval:debate_requested"
+
+	// Scheduled task events (The Watch)
+	EventScheduledTaskFired = "watch:fired"
+	EventTriggerFired       = "watch:trigger_fired"
+
+	// Safety events
+	EventEmergencyStop   = "safety:emergency_stop"
+	EventEmergencyResume = "safety:resume"
+
+	// Achievement events
+	EventAchievementUnlocked = "achievement:unlocked"
+
+	// Goal events
+	EventGoalCreated = "goal:created"
+	EventGoalUpdated = "goal:updated"
+	EventGoalDeleted = "goal:deleted"
+
+	// Issue checkout events
+	EventIssueClaimed   = "issue:claimed"
+	EventIssueUnclaimed = "issue:unclaimed"
 )

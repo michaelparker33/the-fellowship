@@ -5,6 +5,8 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@multica/ui/compo
 import { ModalRegistry } from "../modals/registry";
 import { AppSidebar } from "./app-sidebar";
 import { DashboardGuard } from "./dashboard-guard";
+import { EmergencyBanner } from "./components/emergency-banner";
+import { BrainDumpFab } from "../brain-dump/components/brain-dump-fab";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -24,24 +26,28 @@ export function DashboardLayout({
 }: DashboardLayoutProps) {
   return (
     <DashboardGuard
-      loginPath="/"
+      loginPath="/login"
       loadingFallback={
         <div className="flex h-svh items-center justify-center">
           {loadingIndicator}
         </div>
       }
     >
-      <SidebarProvider className="h-svh">
-        <AppSidebar searchSlot={searchSlot} />
-        <SidebarInset className="overflow-hidden">
-          <div className="flex h-10 shrink-0 items-center border-b px-2 md:hidden">
-            <SidebarTrigger />
-          </div>
-          {children}
-          <ModalRegistry />
-        </SidebarInset>
-        {extra}
-      </SidebarProvider>
+      <div className="flex flex-col h-svh">
+        <EmergencyBanner />
+        <SidebarProvider className="flex-1 min-h-0">
+          <AppSidebar searchSlot={searchSlot} />
+          <SidebarInset className="overflow-hidden">
+            <div className="flex h-10 shrink-0 items-center border-b px-2 md:hidden">
+              <SidebarTrigger />
+            </div>
+            {children}
+            <ModalRegistry />
+          </SidebarInset>
+          {extra}
+          <BrainDumpFab />
+        </SidebarProvider>
+      </div>
     </DashboardGuard>
   );
 }

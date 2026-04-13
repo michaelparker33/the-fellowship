@@ -14,6 +14,7 @@ export function WebProviders({ children }: { children: React.ReactNode }) {
       wsUrl={process.env.NEXT_PUBLIC_WS_URL}
       onLogin={setLoggedInCookie}
       onLogout={clearLoggedInCookie}
+      autoLogin={process.env.NEXT_PUBLIC_LOCAL_AUTO_LOGIN === "true"}
     >
       <WebNavigationProvider>{children}</WebNavigationProvider>
     </CoreProvider>

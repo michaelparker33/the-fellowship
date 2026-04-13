@@ -56,9 +56,21 @@ func allowedOrigins() []string {
 func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Router {
 	queries := db.New(pool)
 	emailSvc := service.NewEmailService()
-	s3 := storage.NewS3StorageFromEnv()
+
+	// File storage: prefer S3, fall back to local filesystem for dev
+	var fileStore storage.FileStorage
+	if s3 := storage.NewS3StorageFromEnv(); s3 != nil {
+		fileStore = s3
+	} else {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
+		fileStore = storage.NewLocalStorage("./uploads", "http://localhost:"+port+"/uploads")
+	}
+
 	cfSigner := auth.NewCloudFrontSignerFromEnv()
-	h := handler.New(queries, pool, hub, bus, emailSvc, s3, cfSigner)
+	h := handler.New(queries, pool, hub, bus, emailSvc, fileStore, cfSigner)
 
 	r := chi.NewRouter()
 
@@ -73,6 +85,12 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
+
+	// Serve local uploads (dev only — production uses S3/CloudFront)
+	r.Handle("/uploads/*", http.StripPrefix("/uploads/", http.FileServer(http.Dir("./uploads"))))
+
+	// Public webhook endpoint (no auth)
+	r.Post("/api/webhooks/{triggerId}", h.FireWebhookTrigger)
 
 	// Health check
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +109,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	r.Post("/auth/send-code", h.SendCode)
 	r.Post("/auth/verify-code", h.VerifyCode)
 	r.Post("/auth/google", h.GoogleLogin)
+	r.Post("/auth/dev-login", h.DevLogin)
 
 	// Daemon API routes (require daemon token or valid user token)
 	r.Route("/api/daemon", func(r chi.Router) {
@@ -162,6 +181,10 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 		// --- Workspace-scoped routes (all require workspace membership) ---
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireWorkspaceMember(queries))
+			r.Use(middleware.FieldSelection)
+
+			// Unified search
+			r.Get("/api/search", h.UnifiedSearch)
 
 			// Assignee frequency
 			r.Get("/api/assignee-frequency", h.GetAssigneeFrequency)
@@ -186,6 +209,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Get("/active-task", h.GetActiveTaskForIssue)
 					r.Post("/tasks/{taskId}/cancel", h.CancelTask)
 					r.Get("/task-runs", h.ListTasksByIssue)
+					r.Get("/tasks/{taskId}/continuations", h.GetTaskContinuationChain)
 					r.Get("/usage", h.GetIssueUsage)
 					r.Post("/reactions", h.AddIssueReaction)
 					r.Delete("/reactions", h.RemoveIssueReaction)
@@ -198,11 +222,11 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			r.Route("/api/projects", func(r chi.Router) {
 				r.Get("/search", h.SearchProjects)
 				r.Get("/", h.ListProjects)
-				r.Post("/", h.CreateProject)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/", h.CreateProject)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", h.GetProject)
-					r.Put("/", h.UpdateProject)
-					r.Delete("/", h.DeleteProject)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/", h.UpdateProject)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Delete("/", h.DeleteProject)
 				})
 			})
 
@@ -260,6 +284,8 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 			r.Route("/api/usage", func(r chi.Router) {
 				r.Get("/daily", h.GetWorkspaceUsageByDay)
 				r.Get("/summary", h.GetWorkspaceUsageSummary)
+				r.Get("/by-agent", h.GetWorkspaceUsageByAgent)
+				r.Get("/daily-spend", h.GetWorkspaceDailySpend)
 			})
 
 			// Runtimes
@@ -288,6 +314,159 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 					r.Post("/messages", h.SendChatMessage)
 					r.Get("/messages", h.ListChatMessages)
 				})
+			})
+
+			// Achievements
+			r.Get("/api/achievements", h.ListAchievements)
+
+			// Safety Controls
+			r.Route("/api/safety", func(r chi.Router) {
+				r.Get("/", h.GetSafetyConfig)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/", h.UpdateSafetyConfig)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/emergency-stop", h.ActivateEmergencyStop)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/resume", h.DeactivateEmergencyStop)
+			})
+
+			// Scheduled Tasks (The Watch)
+			r.Route("/api/scheduled-tasks", func(r chi.Router) {
+				r.Get("/", h.ListScheduledTasks)
+				r.Get("/enabled-count", h.CountEnabledScheduledTasks)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/", h.CreateScheduledTask)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetScheduledTask)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/", h.UpdateScheduledTask)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Delete("/", h.DeleteScheduledTask)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/toggle", h.ToggleScheduledTask)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/trigger", h.TriggerScheduledTask)
+					r.Get("/runs", h.ListScheduledTaskRuns)
+				})
+			})
+
+			// Approvals (The Council)
+			r.Route("/api/approvals", func(r chi.Router) {
+				r.Get("/", h.ListApprovals)
+				r.Get("/pending-count", h.CountPendingApprovals)
+				r.Get("/contested", h.ListContestedApprovals)
+				r.Get("/dry-runs", h.ListDryRunResults)
+				r.Post("/", h.CreateApproval)
+				r.Post("/batch-approve", h.BatchApproveApprovals)
+				r.Post("/batch-reject", h.BatchRejectApprovals)
+				r.Put("/{id}/approve", h.ApproveApproval)
+				r.Put("/{id}/reject", h.RejectApproval)
+				r.Post("/{id}/debate", h.SubmitDebateVote)
+				r.Post("/{id}/dry-run", h.ExecuteDryRun)
+			})
+			r.Route("/api/approval-configs", func(r chi.Router) {
+				r.Get("/", h.ListApprovalConfigs)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/{actionType}", h.UpdateApprovalConfig)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/{actionType}/auto-approve", h.SetAutoApprove)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/{actionType}/dry-run", h.UpdateApprovalConfigDryRun)
+			})
+
+			// Escalations (Loop Detection)
+			r.Route("/api/escalations", func(r chi.Router) {
+				r.Get("/", h.ListEscalatedLoopDetections)
+				r.Get("/count", h.CountEscalatedLoopDetections)
+				r.Put("/{id}/resolve", h.ResolveLoopDetection)
+			})
+
+			// Trust Scores
+			r.Route("/api/trust-scores", func(r chi.Router) {
+				r.Get("/", h.ListTrustScores)
+				r.Get("/promotions", h.ListPromotionSuggestions)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/{id}/dismiss", h.DismissPromotion)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/{id}/accept", h.AcceptPromotion)
+			})
+
+			// Event Triggers (The Watch)
+			r.Route("/api/event-triggers", func(r chi.Router) {
+				r.Get("/", h.ListEventTriggers)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/", h.CreateEventTrigger)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetEventTrigger)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/", h.UpdateEventTrigger)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Delete("/", h.DeleteEventTrigger)
+					r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Put("/toggle", h.ToggleEventTrigger)
+				})
+			})
+
+			// Shadow Mode
+			r.Route("/api/shadow", func(r chi.Router) {
+				r.Get("/runs", h.ListShadowRuns)
+				r.Get("/stats", h.GetShadowStats)
+				r.Put("/runs/{id}/rate", h.RateShadowRun)
+				r.Get("/configs", h.ListShadowConfigs)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/configs", h.UpsertShadowConfig)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Delete("/configs/{id}", h.DeleteShadowConfig)
+			})
+
+			// Debug (Fork-and-Replay)
+			r.Route("/api/debug", func(r chi.Router) {
+				r.Get("/forks", h.ListForks)
+				r.Get("/{issueId}/timeline", h.GetDebugTimeline)
+				r.Post("/{issueId}/fork", h.CreateFork)
+			})
+
+			// Weekly Digests
+			r.Route("/api/digests", func(r chi.Router) {
+				r.Get("/", h.ListWeeklyDigests)
+				r.Get("/latest", h.GetLatestDigest)
+				r.With(middleware.RequireWorkspaceRole(queries, "owner", "admin")).Post("/generate", h.GenerateDigest)
+			})
+
+			// Goals (The Ancestry)
+			r.Route("/api/goals", func(r chi.Router) {
+				r.Get("/", h.ListGoals)
+				r.Post("/", h.CreateGoal)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetGoal)
+					r.Put("/", h.UpdateGoal)
+					r.Delete("/", h.DeleteGoal)
+					r.Get("/chain", h.GetGoalChain)
+				})
+			})
+
+			// Missions (Continuous Run)
+			r.Route("/api/missions", func(r chi.Router) {
+				r.Get("/", h.ListMissions)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", h.GetMission)
+					r.Post("/stop", h.StopMission)
+					r.Post("/advance", h.AdvanceMission)
+				})
+			})
+			r.Post("/api/projects/{id}/run", h.StartMission)
+
+			// Eisenhower Matrix
+			r.Get("/api/eisenhower", h.ListEisenhowerMatrix)
+			r.Get("/api/eisenhower/counts", h.CountEisenhowerQuadrants)
+			r.Put("/api/issues/{id}/quadrant", h.SetEisenhowerQuadrant)
+
+			// Issue goal + checkout
+			r.Post("/api/issues/{id}/goal", h.SetIssueGoal)
+			r.Post("/api/issues/{id}/claim", h.ClaimIssue)
+			r.Post("/api/issues/{id}/unclaim", h.UnclaimIssue)
+
+			// Audit Log
+			r.Get("/api/audit-log", h.ListAuditLogs)
+
+			// Observatory
+			r.Route("/api/observatory", func(r chi.Router) {
+				r.Get("/memory", h.GetObservatoryMemory)
+				r.Get("/corrections", h.GetObservatoryCorrections)
+				r.Get("/patterns", h.GetObservatoryPatterns)
+				r.Get("/health", h.GetObservatoryHealth)
+				r.Get("/profiles", h.GetObservatoryProfiles)
+				r.Get("/sessions", h.GetObservatorySessions)
+			})
+
+			// Brain Dumps
+			r.Route("/api/brain-dumps", func(r chi.Router) {
+				r.Get("/", h.ListBrainDumps)
+				r.Post("/", h.CreateBrainDump)
+				r.Get("/unprocessed-count", h.CountUnprocessedBrainDumps)
+				r.Put("/{id}/process", h.ProcessBrainDump)
+				r.Delete("/{id}", h.DeleteBrainDump)
 			})
 
 			// Inbox

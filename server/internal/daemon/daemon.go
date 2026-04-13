@@ -1,9 +1,13 @@
 package daemon
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -130,11 +134,30 @@ func (d *Daemon) deregisterRuntimes() {
 }
 
 // resolveAuth loads the auth token from the CLI config for the active profile.
+// When LOCAL_AUTO_LOGIN=true, it auto-authenticates via the dev-login endpoint.
 func (d *Daemon) resolveAuth() error {
 	cfg, err := cli.LoadCLIConfigForProfile(d.cfg.Profile)
 	if err != nil {
 		return fmt.Errorf("load CLI config: %w", err)
 	}
+
+	if cfg.Token == "" && os.Getenv("LOCAL_AUTO_LOGIN") == "true" {
+		d.logger.Info("LOCAL_AUTO_LOGIN enabled, auto-authenticating via dev-login")
+		token, workspaces, err := d.devLogin()
+		if err != nil {
+			return fmt.Errorf("dev auto-login failed: %w", err)
+		}
+		cfg.Token = token
+		cfg.ServerURL = d.cfg.ServerBaseURL
+		// Auto-watch all workspaces returned
+		for _, ws := range workspaces {
+			cfg.AddWatchedWorkspace(ws.ID, ws.Name)
+		}
+		if err := cli.SaveCLIConfigForProfile(cfg, d.cfg.Profile); err != nil {
+			d.logger.Warn("failed to save CLI config after auto-login", "error", err)
+		}
+	}
+
 	if cfg.Token == "" {
 		loginHint := "'multica login'"
 		if d.cfg.Profile != "" {
@@ -146,6 +169,64 @@ func (d *Daemon) resolveAuth() error {
 	d.client.SetToken(cfg.Token)
 	d.logger.Info("authenticated")
 	return nil
+}
+
+// devLogin calls POST /auth/dev-login then GET /api/workspaces to obtain a token
+// and discover available workspaces in one shot.
+func (d *Daemon) devLogin() (string, []devLoginWorkspace, error) {
+	// 1. Get token via dev-login
+	var loginResp struct {
+		Token string `json:"token"`
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	body := []byte(`{"email":"michaelparker@ciwebgroup.com","name":"Michael Parker"}`)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, d.cfg.ServerBaseURL+"/auth/dev-login", bytes.NewReader(body))
+	if err != nil {
+		return "", nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", nil, fmt.Errorf("dev-login request: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", nil, fmt.Errorf("dev-login returned %d: %s", resp.StatusCode, string(respBody))
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&loginResp); err != nil {
+		return "", nil, fmt.Errorf("decode dev-login response: %w", err)
+	}
+
+	// 2. List workspaces with the new token
+	wsReq, err := http.NewRequestWithContext(ctx, http.MethodGet, d.cfg.ServerBaseURL+"/api/workspaces", nil)
+	if err != nil {
+		return loginResp.Token, nil, nil
+	}
+	wsReq.Header.Set("Authorization", "Bearer "+loginResp.Token)
+
+	wsResp, err := http.DefaultClient.Do(wsReq)
+	if err != nil {
+		return loginResp.Token, nil, nil // token obtained, workspaces optional
+	}
+	defer wsResp.Body.Close()
+	if wsResp.StatusCode != http.StatusOK {
+		return loginResp.Token, nil, nil
+	}
+
+	var workspaces []devLoginWorkspace
+	if err := json.NewDecoder(wsResp.Body).Decode(&workspaces); err != nil {
+		return loginResp.Token, nil, nil
+	}
+	return loginResp.Token, workspaces, nil
+}
+
+type devLoginWorkspace struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // loadWatchedWorkspaces reads watched workspaces from CLI config and registers runtimes.

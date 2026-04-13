@@ -35,6 +35,12 @@ export interface AgentTask {
   result: unknown;
   error: string | null;
   created_at: string;
+  // Session resilience / continuation fields
+  continuation_of: string | null;
+  continuation_index: number;
+  max_continuations: number;
+  progress_notes: string;
+  failure_reason: string | null;
 }
 
 export interface Agent {

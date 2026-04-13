@@ -29,6 +29,17 @@ import {
   FolderKanban,
   Ellipsis,
   PinOff,
+  Shield,
+  Clock,
+  BarChart3,
+  MessageSquare,
+  Tv,
+  Trophy,
+  Telescope,
+  FlaskConical,
+  Grid2x2,
+  Lightbulb,
+  AlertTriangle,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
@@ -63,24 +74,38 @@ import { inboxKeys, deduplicateInboxItems } from "@multica/core/inbox/queries";
 import { api } from "@multica/core/api";
 import { useModalStore } from "@multica/core/modals";
 import { useMyRuntimesNeedUpdate } from "@multica/core/runtimes/hooks";
+import { useCurrentMemberRole } from "@multica/core/workspace/hooks";
+import { councilKeys } from "@multica/core/council/queries";
+import { escalationKeys } from "@multica/core/escalations/queries";
 import { pinKeys } from "@multica/core/pins/queries";
 import { useDeletePin, useReorderPins } from "@multica/core/pins/mutations";
 import type { PinnedItem } from "@multica/core/types";
 
 const personalNav = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/my-issues", label: "My Issues", icon: CircleUser },
+  { href: "/brain-dump", label: "Brain Dump", icon: Lightbulb },
 ];
 
 const workspaceNav = [
   { href: "/issues", label: "Issues", icon: ListTodo },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/council", label: "Council", icon: Shield },
+  { href: "/watch", label: "Watch", icon: Clock },
+  { href: "/eisenhower", label: "Eisenhower", icon: Grid2x2 },
+  { href: "/war-room", label: "War Room", icon: Tv },
+  { href: "/escalations", label: "Escalations", icon: AlertTriangle },
+  { href: "/shadow", label: "Shadow", icon: FlaskConical },
 ];
 
 const configureNav = [
   { href: "/runtimes", label: "Runtimes", icon: Monitor },
   { href: "/skills", label: "Skills", icon: BookOpenText },
+  { href: "/usage", label: "Usage", icon: BarChart3 },
+  { href: "/observatory", label: "Observatory", icon: Telescope },
+  { href: "/achievements", label: "Achievements", icon: Trophy },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -164,6 +189,9 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
 
   const wsId = workspace?.id;
+  const memberRole = useCurrentMemberRole(user?.id);
+  const isAdmin = memberRole === "owner" || memberRole === "admin";
+
   const { data: inboxItems = [] } = useQuery({
     queryKey: wsId ? inboxKeys.list(wsId) : ["inbox", "disabled"],
     queryFn: () => api.listInbox(),
@@ -173,6 +201,20 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
     () => deduplicateInboxItems(inboxItems).filter((i) => !i.read).length,
     [inboxItems],
   );
+  const { data: pendingApprovalData } = useQuery({
+    queryKey: wsId ? councilKeys.pendingCount(wsId) : ["council", "disabled"],
+    queryFn: () => api.countPendingApprovals(),
+    enabled: !!wsId,
+    refetchInterval: 30_000,
+  });
+  const pendingApprovalCount = (pendingApprovalData as { count: number } | undefined)?.count ?? 0;
+  const { data: escalationCountData } = useQuery({
+    queryKey: wsId ? escalationKeys.count(wsId) : ["escalations", "disabled"],
+    queryFn: () => api.countEscalations(),
+    enabled: !!wsId,
+    refetchInterval: 30_000,
+  });
+  const escalationCount = (escalationCountData as { count: number } | undefined)?.count ?? 0;
   const hasRuntimeUpdates = useMyRuntimesNeedUpdate(wsId);
   const { data: pinnedItems = [] } = useQuery<PinnedItem[]>({
     queryKey: wsId ? pinKeys.list(wsId) : ["pins", "disabled"],
@@ -238,7 +280,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                     <SidebarMenuButton>
                       <WorkspaceAvatar name={workspace?.name ?? "M"} size="sm" />
                       <span className="flex-1 truncate font-medium">
-                        {workspace?.name ?? "Multica"}
+                        {workspace?.name ?? "The Fellowship"}
                       </span>
                       <ChevronDown className="size-3 text-muted-foreground" />
                     </SidebarMenuButton>
@@ -377,7 +419,13 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {workspaceNav.map((item) => {
+                {workspaceNav
+                  .filter((item) => {
+                    // Council and Watch are admin-only
+                    if ((item.label === "Council" || item.label === "Watch" || item.label === "War Room" || item.label === "Shadow" || item.label === "Escalations") && !isAdmin) return false;
+                    return true;
+                  })
+                  .map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <SidebarMenuItem key={item.href}>
@@ -388,6 +436,16 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                       >
                         <item.icon />
                         <span>{item.label}</span>
+                        {item.label === "Council" && pendingApprovalCount > 0 && (
+                          <span className="ml-auto text-xs">
+                            {pendingApprovalCount > 99 ? "99+" : pendingApprovalCount}
+                          </span>
+                        )}
+                        {item.label === "Escalations" && escalationCount > 0 && (
+                          <span className="ml-auto text-xs text-destructive font-medium">
+                            {escalationCount > 99 ? "99+" : escalationCount}
+                          </span>
+                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
@@ -396,7 +454,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             </SidebarGroupContent>
           </SidebarGroup>
 
-          <SidebarGroup>
+          {isAdmin && <SidebarGroup>
             <SidebarGroupLabel>Configure</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
@@ -420,7 +478,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>
+          </SidebarGroup>}
         </SidebarContent>
 
         <SidebarFooter className="p-2">

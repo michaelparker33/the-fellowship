@@ -1,0 +1,1 @@
+export { ShadowPage } from "./components";

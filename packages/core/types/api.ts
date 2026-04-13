@@ -1,4 +1,4 @@
-import type { Issue, IssueStatus, IssuePriority, IssueAssigneeType } from "./issue";
+import type { Issue, IssueStatus, IssuePriority, IssueAssigneeType, EisenhowerQuadrant } from "./issue";
 import type { MemberRole } from "./workspace";
 import type { Project } from "./project";
 
@@ -27,9 +27,18 @@ export interface UpdateIssueRequest {
   due_date?: string | null;
   parent_issue_id?: string | null;
   project_id?: string | null;
+  eisenhower_quadrant?: EisenhowerQuadrant | null;
 }
 
-export interface ListIssuesParams {
+/** Options for compressed/sparse field selection on any GET endpoint. */
+export interface FieldSelectionParams {
+  /** Include only these fields in the response (id is always included). */
+  fields?: string[];
+  /** Exclude these fields from the response (mutually exclusive with fields). */
+  exclude?: string[];
+}
+
+export interface ListIssuesParams extends FieldSelectionParams {
   limit?: number;
   offset?: number;
   workspace_id?: string;
@@ -106,3 +115,14 @@ export interface PaginationParams {
   limit?: number;
   offset?: number;
 }
+
+// --- Compressed Context: common sparse field sets for agent API reads ---
+
+/** Core issue fields for agent task routing and status display. */
+export const AGENT_ISSUE_FIELDS = ["id", "identifier", "title", "status", "priority", "assignee_id", "assignee_type"] as const;
+
+/** Core project fields for agent context. */
+export const AGENT_PROJECT_FIELDS = ["id", "name", "prefix", "status"] as const;
+
+/** Minimal fields for lightweight list reads. */
+export const AGENT_MINIMAL_FIELDS = ["id", "title", "status"] as const;

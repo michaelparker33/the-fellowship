@@ -41,6 +41,11 @@ DELETE FROM project WHERE id = $1;
 SELECT count(*) FROM issue
 WHERE project_id = $1;
 
+-- name: QuickSearchProjects :many
+SELECT * FROM project
+WHERE workspace_id = $1 AND (title ILIKE '%' || $2 || '%' OR description::text ILIKE '%' || $2 || '%')
+ORDER BY created_at DESC LIMIT $3;
+
 -- name: GetProjectIssueStats :many
 SELECT project_id,
        count(*)::bigint AS total_count,
