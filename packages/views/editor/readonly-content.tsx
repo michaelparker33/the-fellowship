@@ -16,7 +16,7 @@
  * - Rendering mentions with the same IssueMentionCard component and .mention class
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import ReactMarkdown, {
   defaultUrlTransform,
   type Components,
@@ -33,6 +33,7 @@ import { cn } from "@multica/ui/lib/utils";
 import { useNavigation } from "../navigation";
 import { IssueMentionCard } from "../issues/components/issue-mention-card";
 import { ImageLightbox } from "./extensions/image-view";
+import { useLinkHover, LinkHoverCard } from "./link-hover-card";
 import { preprocessMarkdown } from "./utils/preprocess";
 import "./content-editor.css";
 
@@ -86,7 +87,7 @@ function urlTransform(url: string): string {
 // ---------------------------------------------------------------------------
 
 function IssueMentionLink({ issueId, label }: { issueId: string; label?: string }) {
-  const { openInNewTab } = useNavigation();
+  const { push, openInNewTab } = useNavigation();
   const path = `/issues/${issueId}`;
   return (
     <span
@@ -94,11 +95,13 @@ function IssueMentionLink({ issueId, label }: { issueId: string; label?: string 
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        if (openInNewTab) {
-          openInNewTab(path, label);
-        } else {
-          window.open(path, "_blank", "noopener,noreferrer");
+        if (e.metaKey || e.ctrlKey || e.shiftKey) {
+          if (openInNewTab) {
+            openInNewTab(path, label);
+          }
+          return;
         }
+        push(path);
       }}
     >
       <IssueMentionCard issueId={issueId} fallbackLabel={label} />
@@ -107,7 +110,7 @@ function IssueMentionLink({ issueId, label }: { issueId: string; label?: string 
 }
 
 const components: Partial<Components> = {
-  // Links — route mention:// to mention components, others open in new tab
+  // Links — route mention:// to mention components, others show preview card
   a: ({ href, children }) => {
     if (href?.startsWith("mention://")) {
       const match = href.match(
@@ -126,13 +129,20 @@ const components: Partial<Components> = {
       return <span className="mention">{children}</span>;
     }
 
-    // Regular links — open in new tab
+    // Regular links — open directly on click
     return (
       <a
         href={href}
         onClick={(e) => {
           e.preventDefault();
-          if (href) window.open(href, "_blank", "noopener,noreferrer");
+          if (!href) return;
+          if (href.startsWith("/")) {
+            window.dispatchEvent(
+              new CustomEvent("multica:navigate", { detail: { path: href } }),
+            );
+          } else {
+            window.open(href, "_blank", "noopener,noreferrer");
+          }
         }}
       >
         {children}
@@ -271,9 +281,11 @@ interface ReadonlyContentProps {
 
 export function ReadonlyContent({ content, className }: ReadonlyContentProps) {
   const processed = useMemo(() => preprocessMarkdown(content), [content]);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const hover = useLinkHover(wrapperRef);
 
   return (
-    <div className={cn("rich-text-editor readonly text-sm", className)}>
+    <div ref={wrapperRef} className={cn("rich-text-editor readonly text-sm", className)}>
       <ReactMarkdown
         remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, sanitizeSchema]]}
@@ -282,6 +294,7 @@ export function ReadonlyContent({ content, className }: ReadonlyContentProps) {
       >
         {processed}
       </ReactMarkdown>
+      <LinkHoverCard {...hover} />
     </div>
   );
 }

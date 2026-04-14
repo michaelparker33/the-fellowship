@@ -90,6 +90,17 @@ func (d *Daemon) Run(ctx context.Context) error {
 		return err
 	}
 
+	// If no runtimes yet (empty watched list), run one sync cycle to discover
+	// workspaces from the API before giving up. workspaceSyncLoop normally
+	// handles this, but the runtime check below would fail before it runs.
+	if len(d.allRuntimeIDs()) == 0 {
+		d.syncWorkspacesFromAPI(ctx)
+		// syncWorkspacesFromAPI writes to config; reload and register.
+		if err := d.loadWatchedWorkspaces(ctx); err != nil {
+			return err
+		}
+	}
+
 	runtimeIDs := d.allRuntimeIDs()
 	if len(runtimeIDs) == 0 {
 		return fmt.Errorf("no runtimes registered")
@@ -106,6 +117,7 @@ func (d *Daemon) Run(ctx context.Context) error {
 
 	go d.heartbeatLoop(ctx)
 	go d.usageScanLoop(ctx)
+	go d.gcLoop(ctx)
 	go d.serveHealth(ctx, healthLn, time.Now())
 	return d.pollLoop(ctx)
 }
@@ -236,8 +248,13 @@ func (d *Daemon) loadWatchedWorkspaces(ctx context.Context) error {
 		return fmt.Errorf("load CLI config: %w", err)
 	}
 
+	// It's fine to start with an empty watched list — workspaceSyncLoop runs
+	// immediately on startup and will populate the list from the server. The
+	// daemon also accepts HTTP POST /watch for explicit adds from clients
+	// like the Desktop app.
 	if len(cfg.WatchedWorkspaces) == 0 {
-		return fmt.Errorf("no watched workspaces configured: run 'multica workspace watch <id>' to add one")
+		d.logger.Info("no watched workspaces in config; workspaceSyncLoop will populate from API")
+		return nil
 	}
 
 	var registered int
@@ -259,11 +276,14 @@ func (d *Daemon) loadWatchedWorkspaces(ctx context.Context) error {
 		}
 		d.mu.Unlock()
 
-		// Sync workspace repos to local cache.
+		// Sync workspace repos to local cache in the background so heartbeat
+		// and poll loops are not blocked by slow git clone/fetch operations.
 		if d.repoCache != nil && len(resp.Repos) > 0 {
-			if err := d.repoCache.Sync(ws.ID, repoDataToInfo(resp.Repos)); err != nil {
-				d.logger.Warn("repo cache sync failed", "workspace_id", ws.ID, "error", err)
-			}
+			go func(wsID string, repos []RepoData) {
+				if err := d.repoCache.Sync(wsID, repoDataToInfo(repos)); err != nil {
+					d.logger.Warn("repo cache sync failed", "workspace_id", wsID, "error", err)
+				}
+			}(ws.ID, resp.Repos)
 		}
 
 		d.logger.Info("watching workspace", "workspace_id", ws.ID, "name", ws.Name, "runtimes", len(resp.Runtimes), "repos", len(resp.Repos))
@@ -340,6 +360,7 @@ func (d *Daemon) registerRuntimesForWorkspace(ctx context.Context, workspaceID s
 		"daemon_id":    d.cfg.DaemonID,
 		"device_name":  d.cfg.DeviceName,
 		"cli_version":  d.cfg.CLIVersion,
+		"launched_by":  d.cfg.LaunchedBy,
 		"runtimes":     runtimes,
 	}
 
@@ -427,6 +448,9 @@ func (d *Daemon) syncWorkspacesFromAPI(ctx context.Context) {
 
 	var added int
 	for _, ws := range workspaces {
+		if cfg.IsUnwatched(ws.ID) {
+			continue // user explicitly opted out
+		}
 		if cfg.AddWatchedWorkspace(ws.ID, ws.Name) {
 			added++
 			d.logger.Info("workspace sync: discovered new workspace", "workspace_id", ws.ID, "name", ws.Name)
@@ -488,11 +512,13 @@ func (d *Daemon) reloadWorkspaces(ctx context.Context) {
 			}
 			d.mu.Unlock()
 
-			// Sync workspace repos to local cache.
+			// Sync workspace repos to local cache in the background.
 			if d.repoCache != nil && len(resp.Repos) > 0 {
-				if err := d.repoCache.Sync(id, repoDataToInfo(resp.Repos)); err != nil {
-					d.logger.Warn("repo cache sync failed", "workspace_id", id, "error", err)
-				}
+				go func(wsID string, repos []RepoData) {
+					if err := d.repoCache.Sync(wsID, repoDataToInfo(repos)); err != nil {
+						d.logger.Warn("repo cache sync failed", "workspace_id", wsID, "error", err)
+					}
+				}(id, resp.Repos)
 			}
 
 			d.logger.Info("now watching workspace", "workspace_id", id, "name", name)
@@ -600,7 +626,18 @@ func (d *Daemon) handlePing(ctx context.Context, rt Runtime, pingID string) {
 		}
 	}()
 
-	result := <-session.Result
+	var result agent.Result
+	select {
+	case result = <-session.Result:
+	case <-pingCtx.Done():
+		d.logger.Warn("ping timed out waiting for result", "runtime_id", rt.ID, "ping_id", pingID)
+		d.client.ReportPingResult(ctx, rt.ID, pingID, map[string]any{
+			"status":      "failed",
+			"error":       "ping context cancelled while waiting for result",
+			"duration_ms": time.Since(start).Milliseconds(),
+		})
+		return
+	}
 	durationMs := time.Since(start).Milliseconds()
 
 	if result.Status == "completed" {
@@ -626,6 +663,19 @@ func (d *Daemon) handlePing(ctx context.Context, rt Runtime, pingID string) {
 
 // handleUpdate performs the CLI update when triggered by the server via heartbeat.
 func (d *Daemon) handleUpdate(ctx context.Context, runtimeID string, update *PendingUpdate) {
+	// Desktop-managed daemons share their CLI binary with the Electron app,
+	// which is responsible for shipping and replacing it. Letting the daemon
+	// self-update would just get overwritten on the next Desktop launch and
+	// could brick the embedded binary mid-update. Refuse cleanly.
+	if d.cfg.LaunchedBy == "desktop" {
+		d.logger.Info("refusing CLI self-update: daemon is managed by Desktop", "runtime_id", runtimeID, "update_id", update.ID)
+		d.client.ReportUpdateResult(ctx, runtimeID, update.ID, map[string]any{
+			"status": "failed",
+			"error":  "CLI is managed by Multica Desktop — update the Desktop app to upgrade the CLI",
+		})
+		return
+	}
+
 	// Prevent concurrent update attempts.
 	if !d.updating.CompareAndSwap(false, true) {
 		d.logger.Warn("update already in progress, ignoring", "runtime_id", runtimeID, "update_id", update.ID)
@@ -951,6 +1001,15 @@ func (d *Daemon) handleTask(ctx context.Context, task Task) {
 			}
 		}
 	}
+
+	// Write GC metadata after the task finishes so the periodic GC loop
+	// can look up the issue later. Written last so that a mid-task crash
+	// leaves the directory as an orphan (cleaned up by GCOrphanTTL).
+	if result.EnvRoot != "" {
+		if err := execenv.WriteGCMeta(result.EnvRoot, task.IssueID, task.WorkspaceID); err != nil {
+			taskLog.Warn("write gc meta failed (non-fatal)", "error", err)
+		}
+	}
 }
 
 func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLog *slog.Logger) (TaskResult, error) {
@@ -960,9 +1019,11 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 	}
 
 	agentName := "agent"
+	var agentID string
 	var skills []SkillData
 	var instructions string
 	if task.Agent != nil {
+		agentID = task.Agent.ID
 		agentName = task.Agent.Name
 		skills = task.Agent.Skills
 		instructions = task.Agent.Instructions
@@ -974,6 +1035,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 	taskCtx := execenv.TaskContextForEnv{
 		IssueID:           task.IssueID,
 		TriggerCommentID:  task.TriggerCommentID,
+		AgentID:           agentID,
 		AgentName:         agentName,
 		AgentInstructions: instructions,
 		AgentSkills:       convertSkillsForEnv(skills),
@@ -1035,6 +1097,20 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 	if env.CodexHome != "" {
 		agentEnv["CODEX_HOME"] = env.CodexHome
 	}
+	// Inject user-configured custom environment variables (e.g. ANTHROPIC_API_KEY,
+	// ANTHROPIC_BASE_URL for router/proxy mode, or CLAUDE_CODE_USE_BEDROCK for
+	// Bedrock). These are set per-agent via the agent settings UI.
+	// Critical internal variables are blocklisted to prevent accidental or
+	// malicious override of daemon-set values.
+	if task.Agent != nil {
+		for k, v := range task.Agent.CustomEnv {
+			if isBlockedEnvKey(k) {
+				d.logger.Warn("custom_env: blocked key skipped", "key", k)
+				continue
+			}
+			agentEnv[k] = v
+		}
+	}
 	backend, err := agent.New(provider, agent.Config{
 		ExecutablePath: entry.Path,
 		Env:            agentEnv,
@@ -1057,153 +1133,40 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 
 	taskStart := time.Now()
 
-	session, err := backend.Execute(ctx, prompt, agent.ExecOptions{
+	execOpts := agent.ExecOptions{
 		Cwd:             env.WorkDir,
 		Model:           entry.Model,
 		Timeout:         d.cfg.AgentTimeout,
 		ResumeSessionID: task.PriorSessionID,
-	})
+	}
+
+	result, tools, err := d.executeAndDrain(ctx, backend, prompt, execOpts, taskLog, task.ID)
 	if err != nil {
 		return TaskResult{}, err
 	}
 
-	// Drain message channel — forward to server for live output + log locally.
-	var toolCount atomic.Int32
-	go func() {
-		var seq atomic.Int32
-		var mu sync.Mutex
-		var pendingText strings.Builder
-		var pendingThinking strings.Builder
-		var batch []TaskMessageData
-		callIDToTool := map[string]string{} // track callID → tool name for tool_result
-
-		flush := func() {
-			mu.Lock()
-			// Flush any accumulated thinking as a single message.
-			if pendingThinking.Len() > 0 {
-				s := seq.Add(1)
-				batch = append(batch, TaskMessageData{
-					Seq:     int(s),
-					Type:    "thinking",
-					Content: pendingThinking.String(),
-				})
-				pendingThinking.Reset()
-			}
-			// Flush any accumulated text as a single message.
-			if pendingText.Len() > 0 {
-				s := seq.Add(1)
-				batch = append(batch, TaskMessageData{
-					Seq:     int(s),
-					Type:    "text",
-					Content: pendingText.String(),
-				})
-				pendingText.Reset()
-			}
-			toSend := batch
-			batch = nil
-			mu.Unlock()
-
-			if len(toSend) > 0 {
-				sendCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				if err := d.client.ReportTaskMessages(sendCtx, task.ID, toSend); err != nil {
-					taskLog.Debug("failed to report task messages", "error", err)
-				}
-				cancel()
-			}
+	// Fallback: if session resume failed before establishing a session, retry
+	// with a fresh session. We check SessionID == "" to distinguish a resume
+	// failure (no session established) from a failure during actual execution.
+	if result.Status == "failed" && task.PriorSessionID != "" && result.SessionID == "" {
+		firstUsage := result.Usage
+		taskLog.Warn("session resume failed, retrying with fresh session", "error", result.Error)
+		execOpts.ResumeSessionID = ""
+		retryResult, retryTools, retryErr := d.executeAndDrain(ctx, backend, prompt, execOpts, taskLog, task.ID)
+		if retryErr != nil {
+			taskLog.Error("fresh session also failed to start", "error", retryErr)
+		} else {
+			result = retryResult
+			result.Usage = mergeUsage(firstUsage, result.Usage)
+			tools = retryTools
 		}
+	}
 
-		// Periodically flush accumulated text/thinking messages.
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-
-		done := make(chan struct{})
-		go func() {
-			for {
-				select {
-				case <-ticker.C:
-					flush()
-				case <-done:
-					return
-				}
-			}
-		}()
-
-		for msg := range session.Messages {
-			switch msg.Type {
-			case agent.MessageToolUse:
-				n := toolCount.Add(1)
-				taskLog.Info(fmt.Sprintf("tool #%d: %s", n, msg.Tool))
-				if msg.CallID != "" {
-					mu.Lock()
-					callIDToTool[msg.CallID] = msg.Tool
-					mu.Unlock()
-				}
-				s := seq.Add(1)
-				mu.Lock()
-				batch = append(batch, TaskMessageData{
-					Seq:   int(s),
-					Type:  "tool_use",
-					Tool:  msg.Tool,
-					Input: msg.Input,
-				})
-				mu.Unlock()
-			case agent.MessageToolResult:
-				s := seq.Add(1)
-				output := msg.Output
-				if len(output) > 8192 {
-					output = output[:8192]
-				}
-				// Resolve tool name from callID if not set directly.
-				toolName := msg.Tool
-				if toolName == "" && msg.CallID != "" {
-					mu.Lock()
-					toolName = callIDToTool[msg.CallID]
-					mu.Unlock()
-				}
-				mu.Lock()
-				batch = append(batch, TaskMessageData{
-					Seq:    int(s),
-					Type:   "tool_result",
-					Tool:   toolName,
-					Output: output,
-				})
-				mu.Unlock()
-			case agent.MessageThinking:
-				if msg.Content != "" {
-					mu.Lock()
-					pendingThinking.WriteString(msg.Content)
-					mu.Unlock()
-				}
-			case agent.MessageText:
-				if msg.Content != "" {
-					taskLog.Debug("agent", "text", truncateLog(msg.Content, 200))
-					mu.Lock()
-					pendingText.WriteString(msg.Content)
-					mu.Unlock()
-				}
-			case agent.MessageError:
-				taskLog.Error("agent error", "content", msg.Content)
-				s := seq.Add(1)
-				mu.Lock()
-				batch = append(batch, TaskMessageData{
-					Seq:     int(s),
-					Type:    "error",
-					Content: msg.Content,
-				})
-				mu.Unlock()
-			}
-		}
-
-		close(done)
-		flush() // Final flush after channel closes.
-	}()
-
-	result := <-session.Result
 	elapsed := time.Since(taskStart).Round(time.Second)
 	taskLog.Info("agent finished",
 		"status", result.Status,
 		"duration", elapsed.String(),
-		"tools", toolCount.Load(),
+		"tools", tools,
 	)
 
 	// Convert agent usage map to task usage entries.
@@ -1232,6 +1195,7 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 			Comment:   result.Output,
 			SessionID: result.SessionID,
 			WorkDir:   env.WorkDir,
+			EnvRoot:   env.RootDir,
 			Usage:     usageEntries,
 		}, nil
 	case "timeout":
@@ -1241,8 +1205,194 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 		if errMsg == "" {
 			errMsg = fmt.Sprintf("%s execution %s", provider, result.Status)
 		}
-		return TaskResult{Status: "blocked", Comment: errMsg, Usage: usageEntries}, nil
+		return TaskResult{Status: "blocked", Comment: errMsg, EnvRoot: env.RootDir, Usage: usageEntries}, nil
 	}
+}
+
+// executeAndDrain runs a backend, drains its message stream (forwarding to the
+// server), and waits for the final result.
+func (d *Daemon) executeAndDrain(ctx context.Context, backend agent.Backend, prompt string, opts agent.ExecOptions, taskLog *slog.Logger, taskID string) (agent.Result, int32, error) {
+	session, err := backend.Execute(ctx, prompt, opts)
+	if err != nil {
+		return agent.Result{}, 0, err
+	}
+
+	// Create an independent drain deadline so we don't block forever if the
+	// backend's internal timeout fails to produce a Result (e.g. scanner
+	// stuck on a hung stdout pipe). The extra 30 s gives the backend time
+	// to clean up after its own timeout fires.
+	drainTimeout := opts.Timeout + 30*time.Second
+	if opts.Timeout == 0 {
+		drainTimeout = 21 * time.Minute
+	}
+	drainCtx, drainCancel := context.WithTimeout(ctx, drainTimeout)
+	defer drainCancel()
+
+	var toolCount atomic.Int32
+	go func() {
+		var seq atomic.Int32
+		var mu sync.Mutex
+		var pendingText strings.Builder
+		var pendingThinking strings.Builder
+		var batch []TaskMessageData
+		callIDToTool := map[string]string{}
+
+		flush := func() {
+			mu.Lock()
+			if pendingThinking.Len() > 0 {
+				s := seq.Add(1)
+				batch = append(batch, TaskMessageData{
+					Seq:     int(s),
+					Type:    "thinking",
+					Content: pendingThinking.String(),
+				})
+				pendingThinking.Reset()
+			}
+			if pendingText.Len() > 0 {
+				s := seq.Add(1)
+				batch = append(batch, TaskMessageData{
+					Seq:     int(s),
+					Type:    "text",
+					Content: pendingText.String(),
+				})
+				pendingText.Reset()
+			}
+			toSend := batch
+			batch = nil
+			mu.Unlock()
+
+			if len(toSend) > 0 {
+				sendCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				if err := d.client.ReportTaskMessages(sendCtx, taskID, toSend); err != nil {
+					taskLog.Debug("failed to report task messages", "error", err)
+				}
+				cancel()
+			}
+		}
+
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		done := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-ticker.C:
+					flush()
+				case <-done:
+					return
+				}
+			}
+		}()
+
+		for {
+			select {
+			case msg, ok := <-session.Messages:
+				if !ok {
+					goto drainDone
+				}
+				switch msg.Type {
+				case agent.MessageToolUse:
+					n := toolCount.Add(1)
+					taskLog.Info(fmt.Sprintf("tool #%d: %s", n, msg.Tool))
+					if msg.CallID != "" {
+						mu.Lock()
+						callIDToTool[msg.CallID] = msg.Tool
+						mu.Unlock()
+					}
+					s := seq.Add(1)
+					mu.Lock()
+					batch = append(batch, TaskMessageData{
+						Seq:   int(s),
+						Type:  "tool_use",
+						Tool:  msg.Tool,
+						Input: msg.Input,
+					})
+					mu.Unlock()
+				case agent.MessageToolResult:
+					s := seq.Add(1)
+					output := msg.Output
+					if len(output) > 8192 {
+						output = output[:8192]
+					}
+					toolName := msg.Tool
+					if toolName == "" && msg.CallID != "" {
+						mu.Lock()
+						toolName = callIDToTool[msg.CallID]
+						mu.Unlock()
+					}
+					mu.Lock()
+					batch = append(batch, TaskMessageData{
+						Seq:    int(s),
+						Type:   "tool_result",
+						Tool:   toolName,
+						Output: output,
+					})
+					mu.Unlock()
+				case agent.MessageThinking:
+					if msg.Content != "" {
+						mu.Lock()
+						pendingThinking.WriteString(msg.Content)
+						mu.Unlock()
+					}
+				case agent.MessageText:
+					if msg.Content != "" {
+						taskLog.Debug("agent", "text", truncateLog(msg.Content, 200))
+						mu.Lock()
+						pendingText.WriteString(msg.Content)
+						mu.Unlock()
+					}
+				case agent.MessageError:
+					taskLog.Error("agent error", "content", msg.Content)
+					s := seq.Add(1)
+					mu.Lock()
+					batch = append(batch, TaskMessageData{
+						Seq:     int(s),
+						Type:    "error",
+						Content: msg.Content,
+					})
+					mu.Unlock()
+				}
+			case <-drainCtx.Done():
+				goto drainDone
+			}
+		}
+	drainDone:
+		close(done)
+		flush()
+	}()
+
+	select {
+	case result := <-session.Result:
+		return result, toolCount.Load(), nil
+	case <-drainCtx.Done():
+		return agent.Result{
+			Status: "timeout",
+			Error:  "agent did not produce result within drain timeout",
+		}, toolCount.Load(), nil
+	}
+}
+
+func mergeUsage(a, b map[string]agent.TokenUsage) map[string]agent.TokenUsage {
+	if len(a) == 0 {
+		return b
+	}
+	if len(b) == 0 {
+		return a
+	}
+	merged := make(map[string]agent.TokenUsage, len(a)+len(b))
+	for model, u := range a {
+		merged[model] = u
+	}
+	for model, u := range b {
+		existing := merged[model]
+		existing.InputTokens += u.InputTokens
+		existing.OutputTokens += u.OutputTokens
+		existing.CacheReadTokens += u.CacheReadTokens
+		existing.CacheWriteTokens += u.CacheWriteTokens
+		merged[model] = existing
+	}
+	return merged
 }
 
 // repoDataToInfo converts daemon RepoData to repocache RepoInfo.
@@ -1302,4 +1452,19 @@ func convertSkillsForEnv(skills []SkillData) []execenv.SkillContextForEnv {
 		}
 	}
 	return result
+}
+
+// isBlockedEnvKey returns true if the key must not be overridden by user-
+// configured custom_env. This prevents accidental or malicious override of
+// daemon-internal variables and critical system paths.
+func isBlockedEnvKey(key string) bool {
+	upper := strings.ToUpper(key)
+	if strings.HasPrefix(upper, "MULTICA_") {
+		return true
+	}
+	switch upper {
+	case "HOME", "PATH", "USER", "SHELL", "TERM", "CODEX_HOME":
+		return true
+	}
+	return false
 }

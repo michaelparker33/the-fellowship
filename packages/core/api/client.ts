@@ -41,6 +41,8 @@ import type {
   Attachment,
   ChatSession,
   ChatMessage,
+  ChatPendingTask,
+  PendingChatTasksResponse,
   SendChatMessageResponse,
   Project,
   CreateProjectRequest,
@@ -50,58 +52,20 @@ import type {
   CreatePinRequest,
   PinnedItemType,
   ReorderPinsRequest,
-  Approval,
-  ApprovalConfig,
-  DryRunResult,
-  CreateApprovalRequest,
-  ListApprovalsParams,
-  ListApprovalsResponse,
-  DecideApprovalResponse,
-  BatchApproveParams,
-  BatchRejectParams,
-  BatchApproveResponse,
-  BatchRejectResponse,
-  AutonomyLevel,
-  ScheduledTask,
-  ScheduledTaskRun,
-  CreateScheduledTaskRequest,
-  UpdateScheduledTaskRequest,
-  SafetyConfig,
-  Achievement,
-  MemoryState,
-  CorrectionsState,
-  PatternsState,
-  HealthState,
-  AgentProfile,
-  SessionEntry,
-  DailySessionStat,
-  Goal,
-  TrustScore,
-  EventTrigger,
-  CreateEventTriggerRequest,
-  UpdateEventTriggerRequest,
-  ListEventTriggersResponse,
-  ShadowRun,
-  ShadowConfig,
-  ShadowStats,
-  CreateShadowConfigRequest,
-  ListShadowRunsResponse,
-  TaskFork,
-  DebugTimelineResponse,
-  CreateForkRequest,
-  ListForksResponse,
-  WeeklyDigest,
-  EisenhowerItem,
-  EisenhowerCounts,
-  Mission,
-  ListMissionsResponse,
-  ListMissionsParams,
-  BrainDump,
-  LoopDetection,
-  EscalationDecision,
-  UnifiedSearchResponse,
+  Invitation,
+  Autopilot,
+  AutopilotTrigger,
+  AutopilotRun,
+  CreateAutopilotRequest,
+  UpdateAutopilotRequest,
+  CreateAutopilotTriggerRequest,
+  UpdateAutopilotTriggerRequest,
+  ListAutopilotsResponse,
+  GetAutopilotResponse,
+  ListAutopilotRunsResponse,
 } from "../types";
 import { type Logger, noopLogger } from "../logger";
+import { createRequestId } from "../utils";
 
 export interface ApiClientOptions {
   logger?: Logger;
@@ -111,6 +75,18 @@ export interface ApiClientOptions {
 export interface LoginResponse {
   token: string;
   user: User;
+}
+
+export class ApiError extends Error {
+  readonly status: number;
+  readonly statusText: string;
+
+  constructor(message: string, status: number, statusText: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.statusText = statusText;
+  }
 }
 
 export class ApiClient {
@@ -126,6 +102,10 @@ export class ApiClient {
     this.logger = options?.logger ?? noopLogger;
   }
 
+  getBaseUrl(): string {
+    return this.baseUrl;
+  }
+
   setToken(token: string | null) {
     this.token = token;
   }
@@ -134,10 +114,20 @@ export class ApiClient {
     this.workspaceId = id;
   }
 
+  private readCsrfToken(): string | null {
+    if (typeof document === "undefined") return null;
+    const match = document.cookie
+      .split("; ")
+      .find((c) => c.startsWith("multica_csrf="));
+    return match ? match.split("=")[1] ?? null : null;
+  }
+
   private authHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
     if (this.token) headers["Authorization"] = `Bearer ${this.token}`;
     if (this.workspaceId) headers["X-Workspace-ID"] = this.workspaceId;
+    const csrf = this.readCsrfToken();
+    if (csrf) headers["X-CSRF-Token"] = csrf;
     return headers;
   }
 
@@ -158,7 +148,7 @@ export class ApiClient {
   }
 
   private async fetch<T>(path: string, init?: RequestInit): Promise<T> {
-    const rid = crypto.randomUUID().slice(0, 8);
+    const rid = createRequestId();
     const start = Date.now();
     const method = init?.method ?? "GET";
 
@@ -182,7 +172,7 @@ export class ApiClient {
       const message = await this.parseErrorMessage(res, `API error: ${res.status} ${res.statusText}`);
       const logLevel = res.status === 404 ? "warn" : "error";
       this.logger[logLevel](`← ${res.status} ${path}`, { rid, duration: `${Date.now() - start}ms`, error: message });
-      throw new Error(message);
+      throw new ApiError(message, res.status, res.statusText);
     }
 
     this.logger.info(`← ${res.status} ${path}`, { rid, duration: `${Date.now() - start}ms` });
@@ -217,11 +207,12 @@ export class ApiClient {
     });
   }
 
-  async devLogin(email?: string, name?: string): Promise<LoginResponse> {
-    return this.fetch("/auth/dev-login", {
-      method: "POST",
-      body: JSON.stringify({ email: email ?? "", name: name ?? "" }),
-    });
+  async logout(): Promise<void> {
+    await this.fetch("/auth/logout", { method: "POST" });
+  }
+
+  async issueCliToken(): Promise<{ token: string }> {
+    return this.fetch("/api/cli-token", { method: "POST" });
   }
 
   async getMe(): Promise<User> {
@@ -233,15 +224,6 @@ export class ApiClient {
       method: "PATCH",
       body: JSON.stringify(data),
     });
-  }
-
-  /**
-   * Apply field selection params (fields/exclude) to a URLSearchParams object.
-   * Used internally by list/get methods to support sparse field selection.
-   */
-  private applyFieldSelection(search: URLSearchParams, params?: { fields?: string[]; exclude?: string[] }): void {
-    if (params?.fields?.length) search.set("fields", params.fields.join(","));
-    if (params?.exclude?.length) search.set("exclude", params.exclude.join(","));
   }
 
   // Issues
@@ -257,7 +239,6 @@ export class ApiClient {
     if (params?.assignee_ids?.length) search.set("assignee_ids", params.assignee_ids.join(","));
     if (params?.creator_id) search.set("creator_id", params.creator_id);
     if (params?.open_only) search.set("open_only", "true");
-    this.applyFieldSelection(search, params);
     return this.fetch(`/api/issues?${search}`);
   }
 
@@ -275,13 +256,6 @@ export class ApiClient {
     if (params.offset !== undefined) search.set("offset", String(params.offset));
     if (params.include_closed) search.set("include_closed", "true");
     return this.fetch(`/api/projects/search?${search}`, params.signal ? { signal: params.signal } : undefined);
-  }
-
-  async unifiedSearch(params: { q: string; types?: string; limit?: number; signal?: AbortSignal }): Promise<UnifiedSearchResponse> {
-    const search = new URLSearchParams({ q: params.q });
-    if (params.types !== undefined) search.set("types", params.types);
-    if (params.limit !== undefined) search.set("limit", String(params.limit));
-    return this.fetch(`/api/search?${search}`, params.signal ? { signal: params.signal } : undefined);
   }
 
   async getIssue(id: string): Promise<Issue> {
@@ -308,6 +282,10 @@ export class ApiClient {
     return this.fetch(`/api/issues/${id}/children`);
   }
 
+  async getChildIssueProgress(): Promise<{ progress: { parent_issue_id: string; total: number; done: number }[] }> {
+    return this.fetch("/api/issues/child-progress");
+  }
+
   async deleteIssue(id: string): Promise<void> {
     await this.fetch(`/api/issues/${id}`, { method: "DELETE" });
   }
@@ -324,15 +302,6 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify({ issue_ids: issueIds }),
     });
-  }
-
-  // Eisenhower Matrix
-  async listEisenhowerMatrix(): Promise<{ items: EisenhowerItem[]; counts: EisenhowerCounts }> {
-    return this.fetch("/api/eisenhower");
-  }
-
-  async countEisenhowerQuadrants(): Promise<EisenhowerCounts> {
-    return this.fetch("/api/eisenhower/counts");
   }
 
   // Comments
@@ -515,15 +484,11 @@ export class ApiClient {
   }
 
   async listTaskMessages(taskId: string): Promise<TaskMessagePayload[]> {
-    return this.fetch(`/api/daemon/tasks/${taskId}/messages`);
+    return this.fetch(`/api/tasks/${taskId}/messages`);
   }
 
   async listTasksByIssue(issueId: string): Promise<AgentTask[]> {
     return this.fetch(`/api/issues/${issueId}/task-runs`);
-  }
-
-  async getTaskContinuationChain(issueId: string, taskId: string): Promise<{ tasks: AgentTask[] }> {
-    return this.fetch(`/api/issues/${issueId}/tasks/${taskId}/continuations`);
   }
 
   async getIssueUsage(issueId: string): Promise<IssueUsageSummary> {
@@ -597,7 +562,7 @@ export class ApiClient {
     return this.fetch(`/api/workspaces/${workspaceId}/members`);
   }
 
-  async createMember(workspaceId: string, data: CreateMemberRequest): Promise<MemberWithUser> {
+  async createMember(workspaceId: string, data: CreateMemberRequest): Promise<Invitation> {
     return this.fetch(`/api/workspaces/${workspaceId}/members`, {
       method: "POST",
       body: JSON.stringify(data),
@@ -619,6 +584,37 @@ export class ApiClient {
 
   async leaveWorkspace(workspaceId: string): Promise<void> {
     await this.fetch(`/api/workspaces/${workspaceId}/leave`, {
+      method: "POST",
+    });
+  }
+
+  // Invitations
+  async listWorkspaceInvitations(workspaceId: string): Promise<Invitation[]> {
+    return this.fetch(`/api/workspaces/${workspaceId}/invitations`);
+  }
+
+  async revokeInvitation(workspaceId: string, invitationId: string): Promise<void> {
+    await this.fetch(`/api/workspaces/${workspaceId}/invitations/${invitationId}`, {
+      method: "DELETE",
+    });
+  }
+
+  async listMyInvitations(): Promise<Invitation[]> {
+    return this.fetch("/api/invitations");
+  }
+
+  async getInvitation(invitationId: string): Promise<Invitation> {
+    return this.fetch(`/api/invitations/${invitationId}`);
+  }
+
+  async acceptInvitation(invitationId: string): Promise<MemberWithUser> {
+    return this.fetch(`/api/invitations/${invitationId}/accept`, {
+      method: "POST",
+    });
+  }
+
+  async declineInvitation(invitationId: string): Promise<void> {
+    await this.fetch(`/api/invitations/${invitationId}/decline`, {
       method: "POST",
     });
   }
@@ -697,7 +693,7 @@ export class ApiClient {
     if (opts?.issueId) formData.append("issue_id", opts.issueId);
     if (opts?.commentId) formData.append("comment_id", opts.commentId);
 
-    const rid = crypto.randomUUID().slice(0, 8);
+    const rid = createRequestId();
     const start = Date.now();
     this.logger.info("→ POST /api/upload-file", { rid });
 
@@ -749,6 +745,18 @@ export class ApiClient {
       method: "POST",
       body: JSON.stringify({ content }),
     });
+  }
+
+  async getPendingChatTask(sessionId: string): Promise<ChatPendingTask> {
+    return this.fetch(`/api/chat/sessions/${sessionId}/pending-task`);
+  }
+
+  async listPendingChatTasks(): Promise<PendingChatTasksResponse> {
+    return this.fetch(`/api/chat/pending-tasks`);
+  }
+
+  async markChatSessionRead(sessionId: string): Promise<void> {
+    await this.fetch(`/api/chat/sessions/${sessionId}/read`, { method: "POST" });
   }
 
   async cancelTaskById(taskId: string): Promise<void> {
@@ -817,444 +825,61 @@ export class ApiClient {
     });
   }
 
-  // Approvals (The Council)
-  async listApprovals(params?: ListApprovalsParams): Promise<ListApprovalsResponse> {
-    const q = new URLSearchParams();
-    if (params?.status) q.set("status", params.status);
-    if (params?.risk_level) q.set("risk_level", params.risk_level);
-    if (params?.action_type) q.set("action_type", params.action_type);
-    if (params?.limit) q.set("limit", String(params.limit));
-    if (params?.offset) q.set("offset", String(params.offset));
-    const qs = q.toString();
-    return this.fetch(`/api/approvals${qs ? `?${qs}` : ""}`);
-  }
-
-  async createApproval(data: CreateApprovalRequest): Promise<Approval> {
-    return this.fetch("/api/approvals", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async approveApproval(id: string, note?: string): Promise<DecideApprovalResponse> {
-    return this.fetch(`/api/approvals/${id}/approve`, {
-      method: "PUT",
-      body: JSON.stringify({ note: note ?? "" }),
-    });
-  }
-
-  async rejectApproval(id: string, note?: string): Promise<DecideApprovalResponse> {
-    return this.fetch(`/api/approvals/${id}/reject`, {
-      method: "PUT",
-      body: JSON.stringify({ note: note ?? "" }),
-    });
-  }
-
-  async countPendingApprovals(): Promise<{ count: number }> {
-    return this.fetch("/api/approvals/pending-count");
-  }
-
-  async submitDebateVote(approvalId: string, agentId: string, verdict: string, reasoning: string): Promise<Approval> {
-    return this.fetch(`/api/approvals/${approvalId}/debate`, {
-      method: "POST",
-      body: JSON.stringify({ agent_id: agentId, verdict, reasoning }),
-    });
-  }
-
-  async listContestedApprovals(limit = 50, offset = 0): Promise<ListApprovalsResponse> {
-    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    return this.fetch(`/api/approvals/contested?${params}`);
-  }
-
-  async listApprovalConfigs(): Promise<{ items: ApprovalConfig[] }> {
-    return this.fetch("/api/approval-configs");
-  }
-
-  async updateApprovalConfig(actionType: string, autonomyLevel: AutonomyLevel): Promise<ApprovalConfig> {
-    return this.fetch(`/api/approval-configs/${encodeURIComponent(actionType)}`, {
-      method: "PUT",
-      body: JSON.stringify({ autonomy_level: autonomyLevel }),
-    });
-  }
-
-  async setAutoApprove(actionType: string, autoApprove: boolean): Promise<void> {
-    await this.fetch(`/api/approval-configs/${encodeURIComponent(actionType)}/auto-approve`, {
-      method: "PUT",
-      body: JSON.stringify({ auto_approve: autoApprove }),
-    });
-  }
-
-  // Dry Run
-  async executeDryRun(approvalId: string): Promise<DryRunResult> {
-    return this.fetch(`/api/approvals/${approvalId}/dry-run`, { method: "POST" });
-  }
-
-  async batchApproveApprovals(params: BatchApproveParams): Promise<BatchApproveResponse> {
-    return this.fetch("/api/approvals/batch-approve", {
-      method: "POST",
-      body: JSON.stringify(params),
-    });
-  }
-
-  async batchRejectApprovals(params: BatchRejectParams): Promise<BatchRejectResponse> {
-    return this.fetch("/api/approvals/batch-reject", {
-      method: "POST",
-      body: JSON.stringify(params),
-    });
-  }
-
-  async listDryRunResults(params?: { limit?: number; offset?: number }): Promise<{ approvals: Approval[]; total: number }> {
+  // Autopilots
+  async listAutopilots(params?: { status?: string }): Promise<ListAutopilotsResponse> {
     const search = new URLSearchParams();
-    if (params?.limit) search.set("limit", String(params.limit));
-    if (params?.offset) search.set("offset", String(params.offset));
-    const qs = search.toString();
-    return this.fetch(`/api/approvals/dry-runs${qs ? `?${qs}` : ""}`);
+    if (params?.status) search.set("status", params.status);
+    return this.fetch(`/api/autopilots?${search}`);
   }
 
-  async updateApprovalConfigDryRun(actionType: string, requireDryRun: boolean): Promise<void> {
-    await this.fetch(`/api/approval-configs/${encodeURIComponent(actionType)}/dry-run`, {
-      method: "PUT",
-      body: JSON.stringify({ require_dry_run: requireDryRun }),
-    });
+  async getAutopilot(id: string): Promise<GetAutopilotResponse> {
+    return this.fetch(`/api/autopilots/${id}`);
   }
 
-  // Trust Scores
-  async listTrustScores(): Promise<{ items: TrustScore[] }> {
-    return this.fetch("/api/trust-scores");
-  }
-
-  async listPromotionSuggestions(): Promise<{ items: TrustScore[] }> {
-    return this.fetch("/api/trust-scores/promotions");
-  }
-
-  async dismissPromotion(id: string): Promise<void> {
-    await this.fetch(`/api/trust-scores/${id}/dismiss`, { method: "POST" });
-  }
-
-  async acceptPromotion(id: string): Promise<void> {
-    await this.fetch(`/api/trust-scores/${id}/accept`, { method: "POST" });
-  }
-
-  // Event Triggers (The Watch)
-  async listEventTriggers(limit = 50, offset = 0): Promise<ListEventTriggersResponse> {
-    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    return this.fetch(`/api/event-triggers?${params}`);
-  }
-
-  async createEventTrigger(data: CreateEventTriggerRequest): Promise<EventTrigger> {
-    return this.fetch("/api/event-triggers", {
+  async createAutopilot(data: CreateAutopilotRequest): Promise<Autopilot> {
+    return this.fetch("/api/autopilots", {
       method: "POST",
       body: JSON.stringify(data),
     });
   }
 
-  async getEventTrigger(id: string): Promise<EventTrigger> {
-    return this.fetch(`/api/event-triggers/${id}`);
-  }
-
-  async updateEventTrigger(id: string, data: UpdateEventTriggerRequest): Promise<EventTrigger> {
-    return this.fetch(`/api/event-triggers/${id}`, {
-      method: "PUT",
+  async updateAutopilot(id: string, data: UpdateAutopilotRequest): Promise<Autopilot> {
+    return this.fetch(`/api/autopilots/${id}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   }
 
-  async deleteEventTrigger(id: string): Promise<void> {
-    await this.fetch(`/api/event-triggers/${id}`, { method: "DELETE" });
+  async deleteAutopilot(id: string): Promise<void> {
+    await this.fetch(`/api/autopilots/${id}`, { method: "DELETE" });
   }
 
-  async toggleEventTrigger(id: string): Promise<EventTrigger> {
-    return this.fetch(`/api/event-triggers/${id}/toggle`, { method: "PUT" });
+  async triggerAutopilot(id: string): Promise<AutopilotRun> {
+    return this.fetch(`/api/autopilots/${id}/trigger`, { method: "POST" });
   }
 
-  // Shadow Mode
-  async listShadowRuns(limit = 50, offset = 0): Promise<ListShadowRunsResponse> {
-    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    return this.fetch(`/api/shadow/runs?${params}`);
-  }
-
-  async getShadowStats(): Promise<ShadowStats> {
-    return this.fetch("/api/shadow/stats");
-  }
-
-  async rateShadowRun(id: string, qualityScore: number): Promise<ShadowRun> {
-    return this.fetch(`/api/shadow/runs/${id}/rate`, {
-      method: "PUT",
-      body: JSON.stringify({ quality_score: qualityScore }),
-    });
-  }
-
-  async listShadowConfigs(): Promise<{ items: ShadowConfig[] }> {
-    return this.fetch("/api/shadow/configs");
-  }
-
-  async upsertShadowConfig(data: CreateShadowConfigRequest): Promise<ShadowConfig> {
-    return this.fetch("/api/shadow/configs", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteShadowConfig(id: string): Promise<void> {
-    await this.fetch(`/api/shadow/configs/${id}`, { method: "DELETE" });
-  }
-
-  // Debug (Fork-and-Replay)
-  async getDebugTimeline(issueId: string): Promise<DebugTimelineResponse> {
-    return this.fetch(`/api/debug/${issueId}/timeline`);
-  }
-
-  async createFork(issueId: string, data: CreateForkRequest): Promise<TaskFork> {
-    return this.fetch(`/api/debug/${issueId}/fork`, {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async listForks(limit = 50, offset = 0): Promise<ListForksResponse> {
-    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    return this.fetch(`/api/debug/forks?${params}`);
-  }
-
-  // Weekly Digests
-  async listDigests(limit = 20, offset = 0): Promise<{ items: WeeklyDigest[] }> {
-    const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    return this.fetch(`/api/digests?${params}`);
-  }
-
-  async getLatestDigest(): Promise<{ digest: WeeklyDigest | null }> {
-    return this.fetch("/api/digests/latest");
-  }
-
-  async generateDigest(): Promise<WeeklyDigest> {
-    return this.fetch("/api/digests/generate", { method: "POST" });
-  }
-
-  // Scheduled Tasks (The Watch)
-  async listScheduledTasks(): Promise<{ items: ScheduledTask[] }> {
-    return this.fetch("/api/scheduled-tasks");
-  }
-
-  async createScheduledTask(data: CreateScheduledTaskRequest): Promise<ScheduledTask> {
-    return this.fetch("/api/scheduled-tasks", {
-      method: "POST",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async getScheduledTask(id: string): Promise<ScheduledTask> {
-    return this.fetch(`/api/scheduled-tasks/${id}`);
-  }
-
-  async updateScheduledTask(id: string, data: UpdateScheduledTaskRequest): Promise<ScheduledTask> {
-    return this.fetch(`/api/scheduled-tasks/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async deleteScheduledTask(id: string): Promise<void> {
-    await this.fetch(`/api/scheduled-tasks/${id}`, { method: "DELETE" });
-  }
-
-  async toggleScheduledTask(id: string, enabled: boolean): Promise<ScheduledTask> {
-    return this.fetch(`/api/scheduled-tasks/${id}/toggle`, {
-      method: "PUT",
-      body: JSON.stringify({ enabled }),
-    });
-  }
-
-  async triggerScheduledTask(id: string): Promise<void> {
-    await this.fetch(`/api/scheduled-tasks/${id}/trigger`, { method: "POST" });
-  }
-
-  async listScheduledTaskRuns(id: string, limit?: number): Promise<{ items: ScheduledTaskRun[] }> {
-    const q = limit ? `?limit=${limit}` : "";
-    return this.fetch(`/api/scheduled-tasks/${id}/runs${q}`);
-  }
-
-  async countEnabledScheduledTasks(): Promise<{ count: number }> {
-    return this.fetch("/api/scheduled-tasks/enabled-count");
-  }
-
-  // Usage (Cost tracking)
-  async getUsageByDay(days?: number): Promise<any[]> {
-    const q = days ? `?days=${days}` : "";
-    return this.fetch(`/api/usage/daily${q}`);
-  }
-
-  async getUsageSummary(days?: number): Promise<any[]> {
-    const q = days ? `?days=${days}` : "";
-    return this.fetch(`/api/usage/summary${q}`);
-  }
-
-  async getUsageByAgent(days?: number): Promise<any[]> {
-    const q = days ? `?days=${days}` : "";
-    return this.fetch(`/api/usage/by-agent${q}`);
-  }
-
-  async getDailySpend(): Promise<{ cost_usd: number }> {
-    return this.fetch("/api/usage/daily-spend");
-  }
-
-  // Safety
-  async getSafetyConfig(): Promise<SafetyConfig> {
-    return this.fetch("/api/safety");
-  }
-
-  async updateSafetyConfig(data: {
-    daily_spend_limit_cents: number;
-    monthly_spend_limit_cents: number;
-    max_concurrent_tasks: number;
-  }): Promise<SafetyConfig> {
-    return this.fetch("/api/safety", {
-      method: "PUT",
-      body: JSON.stringify(data),
-    });
-  }
-
-  async activateEmergencyStop(): Promise<SafetyConfig> {
-    return this.fetch("/api/safety/emergency-stop", { method: "POST" });
-  }
-
-  async deactivateEmergencyStop(): Promise<SafetyConfig> {
-    return this.fetch("/api/safety/resume", { method: "POST" });
-  }
-
-  // Achievements
-  async listAchievements(): Promise<{ items: Achievement[] }> {
-    return this.fetch("/api/achievements");
-  }
-
-  // Observatory
-  async getObservatoryMemory(): Promise<MemoryState> {
-    return this.fetch("/api/observatory/memory");
-  }
-
-  async getObservatoryCorrections(): Promise<CorrectionsState> {
-    return this.fetch("/api/observatory/corrections");
-  }
-
-  async getObservatoryPatterns(): Promise<PatternsState> {
-    return this.fetch("/api/observatory/patterns");
-  }
-
-  async getObservatoryHealth(): Promise<HealthState> {
-    return this.fetch("/api/observatory/health");
-  }
-
-  async getObservatoryProfiles(): Promise<{ profiles: AgentProfile[] }> {
-    return this.fetch("/api/observatory/profiles");
-  }
-
-  async getObservatorySessions(limit = 50, offset = 0): Promise<{ sessions: SessionEntry[]; daily_stats: DailySessionStat[] }> {
-    return this.fetch(`/api/observatory/sessions?limit=${limit}&offset=${offset}`);
-  }
-
-  // Goals
-  async listGoals(): Promise<{ items: Goal[] }> {
-    return this.fetch("/api/goals");
-  }
-
-  async createGoal(data: { title: string; description?: string; parent_goal_id?: string }): Promise<Goal> {
-    return this.fetch("/api/goals", { method: "POST", body: JSON.stringify(data) });
-  }
-
-  async getGoalChain(goalId: string): Promise<{ chain: Goal[] }> {
-    return this.fetch(`/api/goals/${goalId}/chain`);
-  }
-
-  async setIssueGoal(issueId: string, goalId: string | null): Promise<Goal> {
-    return this.fetch(`/api/issues/${issueId}/goal`, {
-      method: "POST",
-      body: JSON.stringify({ goal_id: goalId }),
-    });
-  }
-
-  async claimIssue(issueId: string, agentId: string, claimVersion: number): Promise<Issue> {
-    return this.fetch(`/api/issues/${issueId}/claim`, {
-      method: "POST",
-      body: JSON.stringify({ agent_id: agentId, claim_version: claimVersion }),
-    });
-  }
-
-  async unclaimIssue(issueId: string, agentId: string): Promise<Issue> {
-    return this.fetch(`/api/issues/${issueId}/unclaim`, {
-      method: "POST",
-      body: JSON.stringify({ agent_id: agentId }),
-    });
-  }
-
-  // Missions (Continuous Run)
-  async startMission(projectId: string): Promise<Mission> {
-    return this.fetch(`/api/projects/${projectId}/run`, { method: "POST" });
-  }
-
-  async getMission(id: string): Promise<Mission> {
-    return this.fetch(`/api/missions/${id}`);
-  }
-
-  async listMissions(params?: ListMissionsParams): Promise<ListMissionsResponse> {
+  async listAutopilotRuns(id: string, params?: { limit?: number; offset?: number }): Promise<ListAutopilotRunsResponse> {
     const search = new URLSearchParams();
-    if (params?.project_id) search.set("project_id", params.project_id);
-    if (params?.limit) search.set("limit", String(params.limit));
-    if (params?.offset) search.set("offset", String(params.offset));
-    const qs = search.toString();
-    return this.fetch(`/api/missions${qs ? `?${qs}` : ""}`);
+    if (params?.limit) search.set("limit", params.limit.toString());
+    if (params?.offset) search.set("offset", params.offset.toString());
+    return this.fetch(`/api/autopilots/${id}/runs?${search}`);
   }
 
-  async stopMission(id: string): Promise<Mission> {
-    return this.fetch(`/api/missions/${id}/stop`, { method: "POST" });
-  }
-
-  async advanceMission(id: string): Promise<Mission> {
-    return this.fetch(`/api/missions/${id}/advance`, { method: "POST" });
-  }
-
-  // Brain Dumps
-  async listBrainDumps(params?: { limit?: number; offset?: number; unprocessed?: boolean }): Promise<{ brain_dumps: BrainDump[]; total: number }> {
-    const search = new URLSearchParams();
-    if (params?.limit) search.set("limit", String(params.limit));
-    if (params?.offset) search.set("offset", String(params.offset));
-    if (params?.unprocessed) search.set("unprocessed", "true");
-    return this.fetch(`/api/brain-dumps?${search}`);
-  }
-
-  async createBrainDump(content: string): Promise<BrainDump> {
-    return this.fetch("/api/brain-dumps", {
+  async createAutopilotTrigger(autopilotId: string, data: CreateAutopilotTriggerRequest): Promise<AutopilotTrigger> {
+    return this.fetch(`/api/autopilots/${autopilotId}/triggers`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(data),
     });
   }
 
-  async countUnprocessedBrainDumps(): Promise<{ count: number }> {
-    return this.fetch("/api/brain-dumps/unprocessed-count");
-  }
-
-  async processBrainDump(id: string, issueId?: string): Promise<BrainDump> {
-    return this.fetch(`/api/brain-dumps/${id}/process`, {
-      method: "PUT",
-      body: JSON.stringify({ issue_id: issueId }),
+  async updateAutopilotTrigger(autopilotId: string, triggerId: string, data: UpdateAutopilotTriggerRequest): Promise<AutopilotTrigger> {
+    return this.fetch(`/api/autopilots/${autopilotId}/triggers/${triggerId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
     });
   }
 
-  async deleteBrainDump(id: string): Promise<void> {
-    await this.fetch(`/api/brain-dumps/${id}`, { method: "DELETE" });
-  }
-
-  // Escalations (Loop Detection)
-  async listEscalations(): Promise<{ items: LoopDetection[] }> {
-    return this.fetch("/api/escalations");
-  }
-
-  async countEscalations(): Promise<{ count: number }> {
-    return this.fetch("/api/escalations/count");
-  }
-
-  async resolveEscalation(id: string, decision: EscalationDecision): Promise<LoopDetection> {
-    return this.fetch(`/api/escalations/${id}/resolve`, {
-      method: "PUT",
-      body: JSON.stringify({ decision }),
-    });
+  async deleteAutopilotTrigger(autopilotId: string, triggerId: string): Promise<void> {
+    await this.fetch(`/api/autopilots/${autopilotId}/triggers/${triggerId}`, { method: "DELETE" });
   }
 }

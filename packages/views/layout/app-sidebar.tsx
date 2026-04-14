@@ -29,17 +29,7 @@ import {
   FolderKanban,
   Ellipsis,
   PinOff,
-  Shield,
-  Clock,
-  BarChart3,
-  MessageSquare,
-  Tv,
-  Trophy,
-  Telescope,
-  FlaskConical,
-  Grid2x2,
-  Lightbulb,
-  AlertTriangle,
+  Zap,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
@@ -54,6 +44,7 @@ import {
   SidebarFooter,
   SidebarMenu,
   SidebarMenuButton,
+  SidebarMenuAction,
   SidebarMenuItem,
   SidebarRail,
 } from "@multica/ui/components/ui/sidebar";
@@ -66,46 +57,33 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@multica/ui/components/ui/dropdown-menu";
-import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
 import { useAuthStore } from "@multica/core/auth";
 import { useWorkspaceStore } from "@multica/core/workspace";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { workspaceListOptions, myInvitationListOptions, workspaceKeys } from "@multica/core/workspace/queries";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inboxKeys, deduplicateInboxItems } from "@multica/core/inbox/queries";
 import { api } from "@multica/core/api";
 import { useModalStore } from "@multica/core/modals";
 import { useMyRuntimesNeedUpdate } from "@multica/core/runtimes/hooks";
-import { useCurrentMemberRole } from "@multica/core/workspace/hooks";
-import { councilKeys } from "@multica/core/council/queries";
-import { escalationKeys } from "@multica/core/escalations/queries";
-import { pinKeys } from "@multica/core/pins/queries";
+import { pinListOptions } from "@multica/core/pins/queries";
 import { useDeletePin, useReorderPins } from "@multica/core/pins/mutations";
 import type { PinnedItem } from "@multica/core/types";
 
 const personalNav = [
   { href: "/inbox", label: "Inbox", icon: Inbox },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/my-issues", label: "My Issues", icon: CircleUser },
-  { href: "/brain-dump", label: "Brain Dump", icon: Lightbulb },
 ];
 
 const workspaceNav = [
   { href: "/issues", label: "Issues", icon: ListTodo },
   { href: "/projects", label: "Projects", icon: FolderKanban },
+  { href: "/autopilots", label: "Autopilot", icon: Zap },
   { href: "/agents", label: "Agents", icon: Bot },
-  { href: "/council", label: "Council", icon: Shield },
-  { href: "/watch", label: "Watch", icon: Clock },
-  { href: "/eisenhower", label: "Eisenhower", icon: Grid2x2 },
-  { href: "/war-room", label: "War Room", icon: Tv },
-  { href: "/escalations", label: "Escalations", icon: AlertTriangle },
-  { href: "/shadow", label: "Shadow", icon: FlaskConical },
 ];
 
 const configureNav = [
   { href: "/runtimes", label: "Runtimes", icon: Monitor },
   { href: "/skills", label: "Skills", icon: BookOpenText },
-  { href: "/usage", label: "Usage", icon: BarChart3 },
-  { href: "/observatory", label: "Observatory", icon: Telescope },
-  { href: "/achievements", label: "Achievements", icon: Trophy },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -118,7 +96,6 @@ function DraftDot() {
 function SortablePinItem({ pin, pathname, onUnpin }: { pin: PinnedItem; pathname: string; onUnpin: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pin.id });
   const wasDragged = useRef(false);
-  const { push } = useNavigation();
 
   useEffect(() => {
     if (isDragging) wasDragged.current = true;
@@ -139,12 +116,13 @@ function SortablePinItem({ pin, pathname, onUnpin }: { pin: PinnedItem; pathname
     >
       <SidebarMenuButton
         isActive={isActive}
-        onClick={() => {
+        render={<AppLink href={href} />}
+        onClick={(event) => {
           if (wasDragged.current) {
             wasDragged.current = false;
+            event.preventDefault();
             return;
           }
-          push(href);
         }}
         className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
       >
@@ -154,17 +132,17 @@ function SortablePinItem({ pin, pathname, onUnpin }: { pin: PinnedItem; pathname
           <FolderKanban className="size-4 shrink-0" />
         )}
         <span className="truncate">{label}</span>
-        <button
-          className="ml-auto opacity-0 group-hover/pin:opacity-100 transition-opacity p-0.5 rounded hover:bg-accent shrink-0"
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            onUnpin();
-          }}
-        >
-          <PinOff className="size-3 text-muted-foreground" />
-        </button>
       </SidebarMenuButton>
+      <SidebarMenuAction
+        showOnHover
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onUnpin();
+        }}
+      >
+        <PinOff className="size-3 text-muted-foreground" />
+      </SidebarMenuAction>
     </SidebarMenuItem>
   );
 }
@@ -183,15 +161,14 @@ interface AppSidebarProps {
 export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }: AppSidebarProps = {}) {
   const { pathname, push } = useNavigation();
   const user = useAuthStore((s) => s.user);
+  const userId = useAuthStore((s) => s.user?.id);
   const authLogout = useAuthStore((s) => s.logout);
   const workspace = useWorkspaceStore((s) => s.workspace);
-  const workspaces = useWorkspaceStore((s) => s.workspaces);
   const switchWorkspace = useWorkspaceStore((s) => s.switchWorkspace);
+  const { data: workspaces = [] } = useQuery(workspaceListOptions());
+  const { data: myInvitations = [] } = useQuery(myInvitationListOptions());
 
   const wsId = workspace?.id;
-  const memberRole = useCurrentMemberRole(user?.id);
-  const isAdmin = memberRole === "owner" || memberRole === "admin";
-
   const { data: inboxItems = [] } = useQuery({
     queryKey: wsId ? inboxKeys.list(wsId) : ["inbox", "disabled"],
     queryFn: () => api.listInbox(),
@@ -201,25 +178,10 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
     () => deduplicateInboxItems(inboxItems).filter((i) => !i.read).length,
     [inboxItems],
   );
-  const { data: pendingApprovalData } = useQuery({
-    queryKey: wsId ? councilKeys.pendingCount(wsId) : ["council", "disabled"],
-    queryFn: () => api.countPendingApprovals(),
-    enabled: !!wsId,
-    refetchInterval: 30_000,
-  });
-  const pendingApprovalCount = (pendingApprovalData as { count: number } | undefined)?.count ?? 0;
-  const { data: escalationCountData } = useQuery({
-    queryKey: wsId ? escalationKeys.count(wsId) : ["escalations", "disabled"],
-    queryFn: () => api.countEscalations(),
-    enabled: !!wsId,
-    refetchInterval: 30_000,
-  });
-  const escalationCount = (escalationCountData as { count: number } | undefined)?.count ?? 0;
   const hasRuntimeUpdates = useMyRuntimesNeedUpdate(wsId);
-  const { data: pinnedItems = [] } = useQuery<PinnedItem[]>({
-    queryKey: wsId ? pinKeys.list(wsId) : ["pins", "disabled"],
-    queryFn: () => api.listPins(),
-    enabled: !!wsId,
+  const { data: pinnedItems = [] } = useQuery({
+    ...pinListOptions(wsId ?? "", userId ?? ""),
+    enabled: !!wsId && !!userId,
   });
   const deletePin = useDeletePin();
   const reorderPins = useReorderPins();
@@ -238,6 +200,19 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
   );
 
   const queryClient = useQueryClient();
+  const acceptInvitationMut = useMutation({
+    mutationFn: (id: string) => api.acceptInvitation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.myInvitations() });
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.list() });
+    },
+  });
+  const declineInvitationMut = useMutation({
+    mutationFn: (id: string) => api.declineInvitation(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: workspaceKeys.myInvitations() });
+    },
+  });
   const logout = () => {
     queryClient.clear();
     authLogout();
@@ -280,7 +255,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                     <SidebarMenuButton>
                       <WorkspaceAvatar name={workspace?.name ?? "M"} size="sm" />
                       <span className="flex-1 truncate font-medium">
-                        {workspace?.name ?? "The Fellowship"}
+                        {workspace?.name ?? "Multica"}
                       </span>
                       <ChevronDown className="size-3 text-muted-foreground" />
                     </SidebarMenuButton>
@@ -298,20 +273,9 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                     </DropdownMenuLabel>
                   </DropdownMenuGroup>
                   <DropdownMenuSeparator />
-                  <DropdownMenuGroup className="group/ws-section">
-                    <DropdownMenuLabel className="flex items-center text-xs text-muted-foreground">
+                  <DropdownMenuGroup>
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">
                       Workspaces
-                      <Tooltip>
-                        <TooltipTrigger
-                          className="ml-auto opacity-0 group-hover/ws-section:opacity-100 transition-opacity rounded hover:bg-accent p-0.5"
-                          onClick={() => useModalStore.getState().open("create-workspace")}
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          Create workspace
-                        </TooltipContent>
-                      </Tooltip>
                     </DropdownMenuLabel>
                     {workspaces.map((ws) => (
                       <DropdownMenuItem
@@ -319,7 +283,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                         onClick={() => {
                           if (ws.id !== workspace?.id) {
                             push("/issues");
-                            switchWorkspace(ws.id);
+                            switchWorkspace(ws);
                           }
                         }}
                       >
@@ -330,7 +294,53 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                         )}
                       </DropdownMenuItem>
                     ))}
+                    <DropdownMenuItem
+                      onClick={() =>
+                        useModalStore.getState().open("create-workspace")
+                      }
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      Create workspace
+                    </DropdownMenuItem>
                   </DropdownMenuGroup>
+                  {myInvitations.length > 0 && (
+                    <>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuGroup>
+                        <DropdownMenuLabel className="text-xs text-muted-foreground">
+                          Pending invitations
+                        </DropdownMenuLabel>
+                        {myInvitations.map((inv) => (
+                          <div key={inv.id} className="flex items-center gap-2 px-2 py-1.5">
+                            <WorkspaceAvatar name={inv.workspace_name ?? "W"} size="sm" />
+                            <span className="flex-1 truncate text-sm">{inv.workspace_name ?? "Workspace"}</span>
+                            <button
+                              type="button"
+                              className="text-xs px-2 py-0.5 rounded bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                              disabled={acceptInvitationMut.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                acceptInvitationMut.mutate(inv.id);
+                              }}
+                            >
+                              Join
+                            </button>
+                            <button
+                              type="button"
+                              className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 disabled:opacity-50"
+                              disabled={declineInvitationMut.isPending}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                declineInvitationMut.mutate(inv.id);
+                              }}
+                            >
+                              Decline
+                            </button>
+                          </div>
+                        ))}
+                      </DropdownMenuGroup>
+                    </>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     <DropdownMenuItem variant="destructive" onClick={logout}>
@@ -419,13 +429,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupLabel>Workspace</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
-                {workspaceNav
-                  .filter((item) => {
-                    // Council and Watch are admin-only
-                    if ((item.label === "Council" || item.label === "Watch" || item.label === "War Room" || item.label === "Shadow" || item.label === "Escalations") && !isAdmin) return false;
-                    return true;
-                  })
-                  .map((item) => {
+                {workspaceNav.map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <SidebarMenuItem key={item.href}>
@@ -436,16 +440,6 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                       >
                         <item.icon />
                         <span>{item.label}</span>
-                        {item.label === "Council" && pendingApprovalCount > 0 && (
-                          <span className="ml-auto text-xs">
-                            {pendingApprovalCount > 99 ? "99+" : pendingApprovalCount}
-                          </span>
-                        )}
-                        {item.label === "Escalations" && escalationCount > 0 && (
-                          <span className="ml-auto text-xs text-destructive font-medium">
-                            {escalationCount > 99 ? "99+" : escalationCount}
-                          </span>
-                        )}
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
@@ -454,7 +448,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             </SidebarGroupContent>
           </SidebarGroup>
 
-          {isAdmin && <SidebarGroup>
+          <SidebarGroup>
             <SidebarGroupLabel>Configure</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
@@ -478,7 +472,7 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
                 })}
               </SidebarMenu>
             </SidebarGroupContent>
-          </SidebarGroup>}
+          </SidebarGroup>
         </SidebarContent>
 
         <SidebarFooter className="p-2">

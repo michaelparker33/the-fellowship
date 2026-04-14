@@ -1,6 +1,7 @@
 "use client";
 
-import { User, Palette, Key, Settings, Users, FolderGit2, ShieldAlert } from "lucide-react";
+import React from "react";
+import { User, Palette, Key, Settings, Users, FolderGit2 } from "lucide-react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@multica/ui/components/ui/tabs";
 import { useWorkspaceStore } from "@multica/core/workspace";
 import { AccountTab } from "./account-tab";
@@ -9,7 +10,6 @@ import { TokensTab } from "./tokens-tab";
 import { WorkspaceTab } from "./workspace-tab";
 import { MembersTab } from "./members-tab";
 import { RepositoriesTab } from "./repositories-tab";
-import { SafetyTab } from "./safety-tab";
 
 const accountTabs = [
   { value: "profile", label: "Profile", icon: User },
@@ -21,26 +21,40 @@ const workspaceTabs = [
   { value: "workspace", label: "General", icon: Settings },
   { value: "repositories", label: "Repositories", icon: FolderGit2 },
   { value: "members", label: "Members", icon: Users },
-  { value: "safety", label: "Safety", icon: ShieldAlert },
 ];
 
-export function SettingsPage() {
+export interface ExtraSettingsTab {
+  value: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  content: React.ReactNode;
+}
+
+interface SettingsPageProps {
+  /** Additional tabs injected by platform (e.g. desktop daemon settings) */
+  extraAccountTabs?: ExtraSettingsTab[];
+}
+
+export function SettingsPage({ extraAccountTabs }: SettingsPageProps = {}) {
   const workspaceName = useWorkspaceStore((s) => s.workspace?.name);
 
   return (
     <Tabs defaultValue="profile" orientation="vertical" className="flex-1 min-h-0 gap-0">
       {/* Left nav */}
       <div className="w-52 shrink-0 border-r overflow-y-auto p-4">
-        <div className="flex items-center gap-2 mb-4 px-2">
-          <Settings className="h-4 w-4 text-muted-foreground" />
-          <h1 className="text-sm font-medium">Settings</h1>
-        </div>
+        <h1 className="text-sm font-semibold mb-4 px-2">Settings</h1>
         <TabsList variant="line" className="flex-col items-stretch">
           {/* My Account group */}
           <span className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">
             My Account
           </span>
           {accountTabs.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value}>
+              <tab.icon className="h-4 w-4" />
+              {tab.label}
+            </TabsTrigger>
+          ))}
+          {extraAccountTabs?.map((tab) => (
             <TabsTrigger key={tab.value} value={tab.value}>
               <tab.icon className="h-4 w-4" />
               {tab.label}
@@ -69,7 +83,9 @@ export function SettingsPage() {
           <TabsContent value="workspace"><WorkspaceTab /></TabsContent>
           <TabsContent value="repositories"><RepositoriesTab /></TabsContent>
           <TabsContent value="members"><MembersTab /></TabsContent>
-          <TabsContent value="safety"><SafetyTab /></TabsContent>
+          {extraAccountTabs?.map((tab) => (
+            <TabsContent key={tab.value} value={tab.value}>{tab.content}</TabsContent>
+          ))}
         </div>
       </div>
     </Tabs>

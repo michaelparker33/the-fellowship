@@ -58,6 +58,17 @@ UPDATE issue SET
 WHERE id = $1
 RETURNING *;
 
+-- name: CreateIssueWithOrigin :one
+INSERT INTO issue (
+    workspace_id, title, description, status, priority,
+    assignee_type, assignee_id, creator_type, creator_id,
+    parent_issue_id, position, due_date, number, project_id,
+    origin_type, origin_id
+) VALUES (
+    $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+    sqlc.narg('origin_type'), sqlc.narg('origin_id')
+) RETURNING *;
+
 -- name: DeleteIssue :exec
 DELETE FROM issue WHERE id = $1;
 
@@ -103,6 +114,15 @@ WHERE workspace_id = $1
   AND assignee_type IS NOT NULL
   AND assignee_id IS NOT NULL
 GROUP BY assignee_type, assignee_id;
+
+-- name: ChildIssueProgress :many
+SELECT parent_issue_id,
+       COUNT(*)::bigint AS total,
+       COUNT(*) FILTER (WHERE status IN ('done', 'cancelled'))::bigint AS done
+FROM issue
+WHERE workspace_id = $1
+  AND parent_issue_id IS NOT NULL
+GROUP BY parent_issue_id;
 
 -- SearchIssues: moved to handler (dynamic SQL for multi-word search support).
 

@@ -5,17 +5,19 @@ import { SidebarProvider, SidebarInset, SidebarTrigger } from "@multica/ui/compo
 import { ModalRegistry } from "../modals/registry";
 import { AppSidebar } from "./app-sidebar";
 import { DashboardGuard } from "./dashboard-guard";
-import { EmergencyBanner } from "./components/emergency-banner";
-import { BrainDumpFab } from "../brain-dump/components/brain-dump-fab";
 
 interface DashboardLayoutProps {
   children: ReactNode;
-  /** Sibling of SidebarInset (e.g. SearchCommand, ChatWindow) */
+  /** Rendered inside SidebarInset (e.g. ChatWindow, ChatFab — absolute-positioned overlays) */
   extra?: ReactNode;
   /** Rendered inside sidebar header as a search trigger */
   searchSlot?: ReactNode;
   /** Loading indicator */
   loadingIndicator?: ReactNode;
+  /** Path to redirect when user is not authenticated */
+  loginPath?: string;
+  /** Path to redirect when user has no workspace */
+  onboardingPath?: string;
 }
 
 export function DashboardLayout({
@@ -23,31 +25,30 @@ export function DashboardLayout({
   extra,
   searchSlot,
   loadingIndicator,
+  loginPath,
+  onboardingPath,
 }: DashboardLayoutProps) {
   return (
     <DashboardGuard
-      loginPath="/login"
+      loginPath={loginPath}
+      onboardingPath={onboardingPath}
       loadingFallback={
         <div className="flex h-svh items-center justify-center">
           {loadingIndicator}
         </div>
       }
     >
-      <div className="flex flex-col h-svh">
-        <EmergencyBanner />
-        <SidebarProvider className="flex-1 min-h-0">
-          <AppSidebar searchSlot={searchSlot} />
-          <SidebarInset className="overflow-hidden">
-            <div className="flex h-10 shrink-0 items-center border-b px-2 md:hidden">
-              <SidebarTrigger />
-            </div>
-            {children}
-            <ModalRegistry />
-          </SidebarInset>
+      <SidebarProvider className="h-svh">
+        <AppSidebar searchSlot={searchSlot} />
+        <SidebarInset className="relative overflow-hidden">
+          <div className="flex h-10 shrink-0 items-center border-b px-2 md:hidden">
+            <SidebarTrigger />
+          </div>
+          {children}
+          <ModalRegistry />
           {extra}
-          <BrainDumpFab />
-        </SidebarProvider>
-      </div>
+        </SidebarInset>
+      </SidebarProvider>
     </DashboardGuard>
   );
 }

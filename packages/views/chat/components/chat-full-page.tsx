@@ -200,8 +200,7 @@ export function ChatFullPage() {
         ) : hasMessages ? (
           <ChatMessageList
             messages={messages}
-            agent={activeAgent}
-            timelineItems={timelineItems}
+            pendingTaskId={pendingTaskId}
             isWaiting={!!pendingTaskId}
           />
         ) : (

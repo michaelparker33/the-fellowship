@@ -11,7 +11,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/multica-ai/multica/server/internal/middleware"
-	"github.com/multica-ai/multica/server/internal/pricing"
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
 	"github.com/multica-ai/multica/server/pkg/protocol"
 	"github.com/multica-ai/multica/server/pkg/redact"
@@ -118,6 +117,7 @@ type DaemonRegisterRequest struct {
 	DaemonID    string `json:"daemon_id"`
 	DeviceName  string `json:"device_name"`
 	CLIVersion  string `json:"cli_version"` // multica CLI version
+	LaunchedBy  string `json:"launched_by"` // "desktop" when spawned by the Electron app
 	Runtimes    []struct {
 		Name    string `json:"name"`
 		Type    string `json:"type"`
@@ -201,6 +201,7 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 		metadata, _ := json.Marshal(map[string]any{
 			"version":     runtime.Version,
 			"cli_version": req.CLIVersion,
+			"launched_by": req.LaunchedBy,
 		})
 
 		registered, err := h.Queries.UpsertAgentRuntime(r.Context(), db.UpsertAgentRuntimeParams{
@@ -218,6 +219,28 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusInternalServerError, "failed to register runtime: "+err.Error())
 			return
 		}
+
+		// Migrate agents from old offline runtimes on the same machine to the
+		// newly registered runtime. Uses the runtime's owner_id (preserved via
+		// COALESCE on upsert) so migration works with both PAT and daemon tokens.
+		// Scoped by daemon_id prefix so that only old profile-suffixed runtimes
+		// (e.g. "hostname-staging") from this machine are affected.
+		effectiveOwnerID := registered.OwnerID
+		if effectiveOwnerID.Valid {
+			migrated, err := h.Queries.MigrateAgentsToRuntime(r.Context(), db.MigrateAgentsToRuntimeParams{
+				NewRuntimeID:   registered.ID,
+				WorkspaceID:    parseUUID(req.WorkspaceID),
+				Provider:       provider,
+				OwnerID:        effectiveOwnerID,
+				DaemonIDPrefix: strToText(req.DaemonID),
+			})
+			if err != nil {
+				slog.Warn("failed to migrate agents to new runtime", "runtime_id", uuidToString(registered.ID), "error", err)
+			} else if migrated > 0 {
+				slog.Info("migrated agents to new runtime", "runtime_id", uuidToString(registered.ID), "provider", provider, "migrated_count", migrated)
+			}
+		}
+
 		resp = append(resp, runtimeToResponse(registered))
 	}
 
@@ -359,15 +382,22 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build response with fresh agent data (name + skills).
+	// Build response with fresh agent data (name + skills + custom_env).
 	resp := taskToResponse(*task)
 	if agent, err := h.Queries.GetAgent(r.Context(), task.AgentID); err == nil {
 		skills := h.TaskService.LoadAgentSkills(r.Context(), task.AgentID)
+		var customEnv map[string]string
+		if agent.CustomEnv != nil {
+			if err := json.Unmarshal(agent.CustomEnv, &customEnv); err != nil {
+				slog.Warn("failed to unmarshal agent custom_env", "agent_id", uuidToString(agent.ID), "error", err)
+			}
+		}
 		resp.Agent = &TaskAgentData{
 			ID:           uuidToString(agent.ID),
 			Name:         agent.Name,
 			Instructions: agent.Instructions,
 			Skills:       skills,
+			CustomEnv:    customEnv,
 		}
 	}
 
@@ -380,6 +410,15 @@ func (h *Handler) ClaimTaskByRuntime(w http.ResponseWriter, r *http.Request) {
 				if json.Unmarshal(ws.Repos, &repos) == nil && len(repos) > 0 {
 					resp.Repos = repos
 				}
+			}
+		}
+
+		// Fetch the triggering comment content so the daemon can embed it
+		// directly in the agent prompt (prevents the agent from ignoring comments
+		// when stale output files exist in a reused workdir).
+		if task.TriggerCommentID.Valid {
+			if comment, err := h.Queries.GetComment(r.Context(), task.TriggerCommentID); err == nil {
+				resp.TriggerCommentContent = comment.Content
 			}
 		}
 
@@ -573,10 +612,6 @@ func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, u := range req.Usage {
-		costUSD := pricing.CalculateCost(u.Model, int64(u.InputTokens), int64(u.OutputTokens), int64(u.CacheReadTokens), int64(u.CacheWriteTokens))
-		costNum := pgtype.Numeric{}
-		costNum.Scan(fmt.Sprintf("%.6f", costUSD))
-
 		if err := h.Queries.UpsertTaskUsage(r.Context(), db.UpsertTaskUsageParams{
 			TaskID:           parseUUID(taskID),
 			Provider:         u.Provider,
@@ -585,7 +620,6 @@ func (h *Handler) ReportTaskUsage(w http.ResponseWriter, r *http.Request) {
 			OutputTokens:     u.OutputTokens,
 			CacheReadTokens:  u.CacheReadTokens,
 			CacheWriteTokens: u.CacheWriteTokens,
-			CostUsd:          costNum,
 		}); err != nil {
 			slog.Warn("upsert task usage failed", "task_id", taskID, "model", u.Model, "error", err)
 		}
@@ -627,26 +661,15 @@ func (h *Handler) FailTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.TaskService.FailTask(r.Context(), parseUUID(taskID), req.Error)
+	task, err := h.TaskService.FailTask(r.Context(), parseUUID(taskID), req.Error)
 	if err != nil {
 		slog.Warn("fail task failed", "task_id", taskID, "error", err)
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	resp := taskToResponse(*result.Task)
-	if result.ContinuationTask != nil {
-		contResp := taskToResponse(*result.ContinuationTask)
-		slog.Info("task failed with continuation", "task_id", taskID, "continuation_task_id", contResp.ID, "task_error", req.Error)
-		writeJSON(w, http.StatusOK, map[string]any{
-			"task":              resp,
-			"continuation_task": contResp,
-		})
-		return
-	}
-
-	slog.Info("task failed", "task_id", taskID, "agent_id", resp.AgentID, "task_error", req.Error)
-	writeJSON(w, http.StatusOK, resp)
+	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.AgentID), "task_error", req.Error)
+	writeJSON(w, http.StatusOK, taskToResponse(*task))
 }
 
 // ---------------------------------------------------------------------------
@@ -841,6 +864,70 @@ func (h *Handler) ListTasksByIssue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, resp)
 }
 
+// ListTaskMessagesByUser returns task messages for a task.
+// Used by the frontend under regular user auth (not daemon auth).
+// Verifies the task belongs to the caller's workspace.
+func (h *Handler) ListTaskMessagesByUser(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+
+	task, err := h.Queries.GetAgentTask(r.Context(), parseUUID(taskID))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+
+	// Verify the task belongs to the caller's workspace.
+	wsID := h.resolveTaskWorkspaceID(r, task)
+	if wsID == "" || wsID != middleware.WorkspaceIDFromContext(r.Context()) {
+		writeError(w, http.StatusNotFound, "task not found")
+		return
+	}
+
+	var (
+		messages []db.TaskMessage
+		queryErr error
+	)
+	if sinceStr := r.URL.Query().Get("since"); sinceStr != "" {
+		sinceSeq, parseErr := strconv.Atoi(sinceStr)
+		if parseErr != nil {
+			writeError(w, http.StatusBadRequest, "invalid since parameter")
+			return
+		}
+		messages, queryErr = h.Queries.ListTaskMessagesSince(r.Context(), db.ListTaskMessagesSinceParams{
+			TaskID: parseUUID(taskID),
+			Seq:    int32(sinceSeq),
+		})
+	} else {
+		messages, queryErr = h.Queries.ListTaskMessages(r.Context(), parseUUID(taskID))
+	}
+	if queryErr != nil {
+		writeError(w, http.StatusInternalServerError, "failed to list task messages")
+		return
+	}
+
+	issueID := uuidToString(task.IssueID)
+
+	resp := make([]protocol.TaskMessagePayload, len(messages))
+	for i, m := range messages {
+		var input map[string]any
+		if m.Input != nil {
+			json.Unmarshal(m.Input, &input)
+		}
+		resp[i] = protocol.TaskMessagePayload{
+			TaskID:  taskID,
+			IssueID: issueID,
+			Seq:     int(m.Seq),
+			Type:    m.Type,
+			Tool:    m.Tool.String,
+			Content: m.Content.String,
+			Input:   input,
+			Output:  m.Output.String,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
 // GetIssueUsage returns aggregated token usage for all tasks belonging to an issue.
 func (h *Handler) GetIssueUsage(w http.ResponseWriter, r *http.Request) {
 	issueID := chi.URLParam(r, "id")
@@ -860,48 +947,16 @@ func (h *Handler) GetIssueUsage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// GetTaskContinuationChain returns the full chain of continuation tasks for debugging.
-func (h *Handler) GetTaskContinuationChain(w http.ResponseWriter, r *http.Request) {
-	taskID := chi.URLParam(r, "taskId")
-
-	chain, err := h.Queries.GetTaskContinuationChain(r.Context(), parseUUID(taskID))
+// GetIssueGCCheck returns minimal issue info needed by the daemon GC loop.
+func (h *Handler) GetIssueGCCheck(w http.ResponseWriter, r *http.Request) {
+	issueID := chi.URLParam(r, "issueId")
+	issue, err := h.Queries.GetIssue(r.Context(), parseUUID(issueID))
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "failed to get continuation chain")
+		writeError(w, http.StatusNotFound, "issue not found")
 		return
 	}
-
-	resp := make([]AgentTaskResponse, len(chain))
-	for i, row := range chain {
-		resp[i] = chainRowToResponse(row)
-	}
-
-	writeJSON(w, http.StatusOK, map[string]any{"tasks": resp})
-}
-
-// chainRowToResponse converts a GetTaskContinuationChainRow to AgentTaskResponse.
-func chainRowToResponse(row db.GetTaskContinuationChainRow) AgentTaskResponse {
-	var result any
-	if row.Result != nil {
-		json.Unmarshal(row.Result, &result)
-	}
-	return AgentTaskResponse{
-		ID:                uuidToString(row.ID),
-		AgentID:           uuidToString(row.AgentID),
-		RuntimeID:         uuidToString(row.RuntimeID),
-		IssueID:           uuidToString(row.IssueID),
-		Status:            row.Status,
-		Priority:          row.Priority,
-		DispatchedAt:      timestampToPtr(row.DispatchedAt),
-		StartedAt:         timestampToPtr(row.StartedAt),
-		CompletedAt:       timestampToPtr(row.CompletedAt),
-		Result:            result,
-		Error:             textToPtr(row.Error),
-		CreatedAt:         timestampToString(row.CreatedAt),
-		TriggerCommentID:  uuidToPtr(row.TriggerCommentID),
-		ContinuationOf:    uuidToPtr(row.ContinuationOf),
-		ContinuationIndex: row.ContinuationIndex,
-		MaxContinuations:  row.MaxContinuations,
-		ProgressNotes:     row.ProgressNotes,
-		FailureReason:     textToPtr(row.FailureReason),
-	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":     issue.Status,
+		"updated_at": issue.UpdatedAt.Time,
+	})
 }

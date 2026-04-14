@@ -14,6 +14,7 @@ import (
 // For Codex:    writes {workDir}/AGENTS.md  (skills discovered natively via CODEX_HOME)
 // For OpenCode: writes {workDir}/AGENTS.md  (skills discovered natively from .config/opencode/skills/)
 // For OpenClaw: writes {workDir}/AGENTS.md  (skills discovered natively from .openclaw/skills/)
+// For Gemini:   writes {workDir}/GEMINI.md  (discovered natively by the Gemini CLI)
 func InjectRuntimeConfig(workDir, provider string, ctx TaskContextForEnv) error {
 	content := buildMetaSkillContent(provider, ctx)
 
@@ -22,6 +23,8 @@ func InjectRuntimeConfig(workDir, provider string, ctx TaskContextForEnv) error 
 		return os.WriteFile(filepath.Join(workDir, "CLAUDE.md"), []byte(content), 0o644)
 	case "codex", "opencode", "openclaw":
 		return os.WriteFile(filepath.Join(workDir, "AGENTS.md"), []byte(content), 0o644)
+	case "gemini":
+		return os.WriteFile(filepath.Join(workDir, "GEMINI.md"), []byte(content), 0o644)
 	default:
 		// Unknown provider — skip config injection, prompt-only mode.
 		return nil
@@ -36,8 +39,22 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 	b.WriteString("# Multica Agent Runtime\n\n")
 	b.WriteString("You are a coding agent in the Multica platform. Use the `multica` CLI to interact with the platform.\n\n")
 
-	// Inject agent identity instructions before workflow commands.
-	if ctx.AgentInstructions != "" {
+	// Always emit agent identity so the agent knows who it is, even when
+	// dispatched via @mention on an issue assigned to a different agent.
+	if ctx.AgentName != "" || ctx.AgentID != "" {
+		b.WriteString("## Agent Identity\n\n")
+		if ctx.AgentName != "" {
+			fmt.Fprintf(&b, "**You are: %s**", ctx.AgentName)
+			if ctx.AgentID != "" {
+				fmt.Fprintf(&b, " (ID: `%s`)", ctx.AgentID)
+			}
+			b.WriteString("\n\n")
+		}
+		if ctx.AgentInstructions != "" {
+			b.WriteString(ctx.AgentInstructions)
+			b.WriteString("\n\n")
+		}
+	} else if ctx.AgentInstructions != "" {
 		b.WriteString("## Agent Identity\n\n")
 		b.WriteString(ctx.AgentInstructions)
 		b.WriteString("\n\n")
@@ -61,6 +78,7 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 	b.WriteString("- `multica issue create --title \"...\" [--description \"...\"] [--priority X] [--assignee X] [--parent <issue-id>] [--status X]` — Create a new issue\n")
 	b.WriteString("- `multica issue assign <id> --to <name>` — Assign an issue to a member or agent by name (use --unassign to remove assignee)\n")
 	b.WriteString("- `multica issue comment add <issue-id> --content \"...\" [--parent <comment-id>]` — Post a comment (use --parent to reply to a specific comment)\n")
+	b.WriteString("  - For content with special characters (backticks, quotes), pipe via stdin: `cat <<'COMMENT' | multica issue comment add <issue-id> --content-stdin`\n")
 	b.WriteString("- `multica issue comment delete <comment-id>` — Delete a comment\n")
 	b.WriteString("- `multica issue status <id> <status>` — Update issue status (todo, in_progress, in_review, done, blocked)\n")
 	b.WriteString("- `multica issue update <id> [--title X] [--description X] [--priority X]` — Update issue fields\n\n")
@@ -96,11 +114,11 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		b.WriteString("- Keep responses concise and direct\n\n")
 	} else if ctx.TriggerCommentID != "" {
 		// Comment-triggered: focus on reading and replying
-		b.WriteString("**This task was triggered by a comment.** Your primary job is to respond.\n\n")
+		b.WriteString("**This task was triggered by a NEW comment.** Your primary job is to respond to THIS specific comment, even if you have handled similar requests before in this session.\n\n")
 		fmt.Fprintf(&b, "1. Run `multica issue get %s --output json` to understand the issue context\n", ctx.IssueID)
 		fmt.Fprintf(&b, "2. Run `multica issue comment list %s --output json` to read the conversation\n", ctx.IssueID)
 		b.WriteString("   - If the output is very large or truncated, use pagination: `--limit 30` to get the latest 30 comments, or `--since <timestamp>` to fetch only recent ones\n")
-		fmt.Fprintf(&b, "3. Find the triggering comment (ID: `%s`) and understand what is being asked\n", ctx.TriggerCommentID)
+		fmt.Fprintf(&b, "3. Find the triggering comment (ID: `%s`) and understand what is being asked — do NOT confuse it with previous comments\n", ctx.TriggerCommentID)
 		fmt.Fprintf(&b, "4. Reply: `multica issue comment add %s --parent %s --content \"...\"`\n", ctx.IssueID, ctx.TriggerCommentID)
 		b.WriteString("5. If the comment requests code changes or further work, do the work first, then reply with your results\n")
 		b.WriteString("6. Do NOT change the issue status unless the comment explicitly asks for it\n\n")
@@ -125,6 +143,9 @@ func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {
 		case "codex", "opencode", "openclaw":
 			// Codex, OpenCode, and OpenClaw discover skills natively from their respective paths — just list names.
 			b.WriteString("You have the following skills installed (discovered automatically):\n\n")
+		case "gemini":
+			// Gemini reads GEMINI.md directly; point it at the fallback skills dir.
+			b.WriteString("Detailed skill instructions are in `.agent_context/skills/`. Each subdirectory contains a `SKILL.md`.\n\n")
 		default:
 			b.WriteString("Detailed skill instructions are in `.agent_context/skills/`. Each subdirectory contains a `SKILL.md`.\n\n")
 		}
