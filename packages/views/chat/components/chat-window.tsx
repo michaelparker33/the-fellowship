@@ -386,6 +386,8 @@ export function ChatWindow() {
           messages={messages}
           pendingTaskId={pendingTaskId}
           isWaiting={!!pendingTaskId}
+          agent={activeAgent}
+          onFollowUp={handleSend}
         />
       ) : (
         <EmptyState

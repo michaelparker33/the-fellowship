@@ -51,21 +51,25 @@ export function chatMessagesOptions(sessionId: string) {
     queryKey: chatKeys.messages(sessionId),
     queryFn: () => api.listChatMessages(sessionId),
     enabled: !!sessionId,
-    staleTime: Infinity,
+    // WS events are the primary invalidation trigger, but we add a 30s
+    // staleTime as a safety net — if a chat:done event is lost, the next
+    // window focus or component remount will pick up the new messages.
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
   });
 }
 
 /**
  * Pending task for a chat session — the "is something still running?" signal.
- * Refetched via WS invalidation in useRealtimeSync when chat:message / chat:done
- * / task:completed / task:failed arrive.
+ * Short staleTime so the UI recovers quickly from dropped WS events.
  */
 export function pendingChatTaskOptions(sessionId: string) {
   return queryOptions({
     queryKey: chatKeys.pendingTask(sessionId),
     queryFn: () => api.getPendingChatTask(sessionId),
     enabled: !!sessionId,
-    staleTime: Infinity,
+    staleTime: 5_000,
+    refetchOnWindowFocus: true,
   });
 }
 
@@ -85,13 +89,13 @@ export function taskMessagesOptions(taskId: string) {
 
 /**
  * Aggregate of in-flight chat tasks for the current user in this workspace.
- * Drives the FAB "running" indicator while the chat window is minimised —
- * no per-session query is active then, so we need this roll-up.
+ * Drives the running indicator while the chat window is minimised.
  */
 export function pendingChatTasksOptions(wsId: string) {
   return queryOptions({
     queryKey: chatKeys.pendingTasks(wsId),
     queryFn: () => api.listPendingChatTasks(),
-    staleTime: Infinity,
+    staleTime: 10_000,
+    refetchOnWindowFocus: true,
   });
 }

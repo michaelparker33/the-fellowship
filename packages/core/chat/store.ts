@@ -69,6 +69,13 @@ export interface ChatState {
   chatWidth: number;
   chatHeight: number;
   isExpanded: boolean;
+  /** Task ID of the in-flight chat request, if any. */
+  pendingTaskId: string | null;
+  /** Timeline items streamed from the pending task. */
+  timelineItems: ChatTimelineItem[];
+  setPendingTask: (taskId: string | null) => void;
+  addTimelineItem: (item: ChatTimelineItem) => void;
+  clearTimeline: () => void;
   setOpen: (open: boolean) => void;
   toggle: () => void;
   setActiveSession: (id: string | null) => void;
@@ -103,6 +110,12 @@ export function createChatStore(options: ChatStoreOptions) {
     chatWidth: Number(storage.getItem(CHAT_WIDTH_KEY)) || CHAT_DEFAULT_W,
     chatHeight: Number(storage.getItem(CHAT_HEIGHT_KEY)) || CHAT_DEFAULT_H,
     isExpanded: storage.getItem(wsKey(CHAT_EXPANDED_KEY)) === "true",
+    pendingTaskId: null,
+    timelineItems: [],
+    setPendingTask: (taskId) => set({ pendingTaskId: taskId }),
+    addTimelineItem: (item) =>
+      set((s) => ({ timelineItems: [...s.timelineItems, item] })),
+    clearTimeline: () => set({ timelineItems: [], pendingTaskId: null }),
     setOpen: (open) => {
       logger.debug("setOpen", { from: get().isOpen, to: open });
       set({ isOpen: open });
