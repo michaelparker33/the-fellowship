@@ -476,6 +476,8 @@ export function useRealtimeSync(
           qc.invalidateQueries({ queryKey: projectKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: runtimeKeys.all(wsId) });
           qc.invalidateQueries({ queryKey: autopilotKeys.all(wsId) });
+          // Chat queries — recover from missed chat:done / task:completed events
+          qc.invalidateQueries({ queryKey: chatKeys.all(wsId) });
         }
         qc.invalidateQueries({ queryKey: workspaceKeys.list() });
       } catch (e) {

@@ -30,6 +30,16 @@ import {
   Ellipsis,
   PinOff,
   Zap,
+  MessageSquare,
+  Eye,
+  Shield,
+  Trophy,
+  Brain,
+  Telescope,
+  AlertTriangle,
+  BarChart3,
+  Target,
+  Swords,
 } from "lucide-react";
 import { WorkspaceAvatar } from "../workspace/workspace-avatar";
 import { ActorAvatar } from "@multica/ui/components/common/actor-avatar";
@@ -77,8 +87,24 @@ const personalNav = [
 const workspaceNav = [
   { href: "/issues", label: "Issues", icon: ListTodo },
   { href: "/projects", label: "Projects", icon: FolderKanban },
-  { href: "/autopilots", label: "Autopilot", icon: Zap },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/agents", label: "Agents", icon: Bot },
+];
+
+const automationNav = [
+  { href: "/autopilots", label: "Autopilot", icon: Zap },
+  { href: "/watch", label: "Watch", icon: Eye },
+  { href: "/council", label: "Council", icon: Shield },
+  { href: "/escalations", label: "Escalations", icon: AlertTriangle },
+];
+
+const insightsNav = [
+  { href: "/observatory", label: "Observatory", icon: Telescope },
+  { href: "/achievements", label: "Achievements", icon: Trophy },
+  { href: "/brain-dump", label: "Brain Dump", icon: Brain },
+  { href: "/usage", label: "Usage", icon: BarChart3 },
+  { href: "/shadow", label: "Shadow", icon: Target },
+  { href: "/war-room", label: "War Room", icon: Swords },
 ];
 
 const configureNav = [
@@ -430,6 +456,52 @@ export function AppSidebar({ topSlot, searchSlot, headerClassName, headerStyle }
             <SidebarGroupContent>
               <SidebarMenu className="gap-0.5">
                 {workspaceNav.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        render={<AppLink href={item.href} />}
+                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                      >
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Automation</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {automationNav.map((item) => {
+                  const isActive = pathname === item.href;
+                  return (
+                    <SidebarMenuItem key={item.href}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        render={<AppLink href={item.href} />}
+                        className="text-muted-foreground hover:not-data-active:bg-sidebar-accent/70 data-active:bg-sidebar-accent data-active:text-sidebar-accent-foreground"
+                      >
+                        <item.icon />
+                        <span>{item.label}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          <SidebarGroup>
+            <SidebarGroupLabel>Insights</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu className="gap-0.5">
+                {insightsNav.map((item) => {
                   const isActive = pathname === item.href;
                   return (
                     <SidebarMenuItem key={item.href}>

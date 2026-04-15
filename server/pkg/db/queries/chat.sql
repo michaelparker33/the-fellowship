@@ -90,6 +90,11 @@ WHERE cs.workspace_id = $1
   AND atq.status IN ('queued', 'dispatched', 'running')
 ORDER BY atq.created_at DESC;
 
+-- name: SearchChatSessions :many
+SELECT id, title, updated_at FROM chat_session
+WHERE workspace_id = $1 AND title ILIKE '%' || $2 || '%' AND status = 'active'
+ORDER BY updated_at DESC LIMIT $3;
+
 -- name: MarkChatSessionRead :exec
 -- Clears unread_since, dropping the session's unread count to 0.
 UPDATE chat_session SET unread_since = NULL

@@ -140,6 +140,24 @@ export interface DailySessionStat {
   total_cost_usd: number;
 }
 
+// Eisenhower
+export type EisenhowerQuadrant = "do" | "schedule" | "delegate" | "eliminate";
+
+export interface EisenhowerItem {
+  id: string;
+  identifier: string;
+  title: string;
+  priority: string;
+  eisenhower_quadrant: EisenhowerQuadrant;
+  assignee_id: string | null;
+  assignee_type: string | null;
+}
+
+export interface EisenhowerMatrixResponse {
+  items: EisenhowerItem[];
+  counts: Record<EisenhowerQuadrant, number>;
+}
+
 // Goals
 export interface Goal {
   id: string;

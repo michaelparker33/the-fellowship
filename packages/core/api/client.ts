@@ -63,6 +63,51 @@ import type {
   ListAutopilotsResponse,
   GetAutopilotResponse,
   ListAutopilotRunsResponse,
+  ScheduledTask,
+  ScheduledTaskRun,
+  CreateScheduledTaskRequest,
+  UpdateScheduledTaskRequest,
+  EventTrigger,
+  CreateEventTriggerRequest,
+  UpdateEventTriggerRequest,
+  ListEventTriggersResponse,
+  ShadowRun,
+  ShadowConfig,
+  ShadowStats,
+  CreateShadowConfigRequest,
+  ListShadowRunsResponse,
+  SafetyConfig,
+  Achievement,
+  BrainDump,
+  AutonomyLevel,
+  DryRunResult,
+  BatchApproveParams,
+  BatchRejectParams,
+  BatchApproveResponse,
+  BatchRejectResponse,
+  ListApprovalsParams,
+  ListApprovalsResponse,
+  DecideApprovalResponse,
+  ApprovalConfig,
+  TrustScore,
+  CreateForkRequest,
+  DebugTimelineResponse,
+  ListForksResponse,
+  TaskFork,
+  EscalationDecision,
+  LoopDetection,
+  Mission,
+  ListMissionsResponse,
+  ListMissionsParams,
+  MemoryState,
+  CorrectionsState,
+  PatternsState,
+  HealthState,
+  AgentProfile,
+  SessionEntry,
+  DailySessionStat,
+  Goal,
+  EisenhowerMatrixResponse,
 } from "../types";
 import { type Logger, noopLogger } from "../logger";
 import { createRequestId } from "../utils";
@@ -881,5 +926,403 @@ export class ApiClient {
 
   async deleteAutopilotTrigger(autopilotId: string, triggerId: string): Promise<void> {
     await this.fetch(`/api/autopilots/${autopilotId}/triggers/${triggerId}`, { method: "DELETE" });
+  }
+
+  // Scheduled Tasks (Watch)
+  async listScheduledTasks(): Promise<{ items: ScheduledTask[] }> {
+    return this.fetch("/api/scheduled-tasks");
+  }
+
+  async createScheduledTask(data: CreateScheduledTaskRequest): Promise<ScheduledTask> {
+    return this.fetch("/api/scheduled-tasks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateScheduledTask(id: string, data: UpdateScheduledTaskRequest): Promise<ScheduledTask> {
+    return this.fetch(`/api/scheduled-tasks/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteScheduledTask(id: string): Promise<void> {
+    await this.fetch(`/api/scheduled-tasks/${id}`, { method: "DELETE" });
+  }
+
+  async toggleScheduledTask(id: string, enabled: boolean): Promise<ScheduledTask> {
+    return this.fetch(`/api/scheduled-tasks/${id}/toggle`, {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    });
+  }
+
+  async triggerScheduledTask(id: string): Promise<void> {
+    await this.fetch(`/api/scheduled-tasks/${id}/trigger`, { method: "POST" });
+  }
+
+  async listScheduledTaskRuns(taskId: string): Promise<{ items: ScheduledTaskRun[] }> {
+    return this.fetch(`/api/scheduled-tasks/${taskId}/runs`);
+  }
+
+  // Event Triggers (Watch)
+  async listEventTriggers(): Promise<ListEventTriggersResponse> {
+    return this.fetch("/api/event-triggers");
+  }
+
+  async createEventTrigger(data: CreateEventTriggerRequest): Promise<EventTrigger> {
+    return this.fetch("/api/event-triggers", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async updateEventTrigger(id: string, data: UpdateEventTriggerRequest): Promise<EventTrigger> {
+    return this.fetch(`/api/event-triggers/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteEventTrigger(id: string): Promise<void> {
+    await this.fetch(`/api/event-triggers/${id}`, { method: "DELETE" });
+  }
+
+  async toggleEventTrigger(id: string): Promise<EventTrigger> {
+    return this.fetch(`/api/event-triggers/${id}/toggle`, { method: "POST" });
+  }
+
+  // Shadow
+  async listShadowRuns(): Promise<ListShadowRunsResponse> {
+    return this.fetch("/api/shadow/runs");
+  }
+
+  async rateShadowRun(id: string, score: number): Promise<ShadowRun> {
+    return this.fetch(`/api/shadow/runs/${id}/rate`, {
+      method: "POST",
+      body: JSON.stringify({ score }),
+    });
+  }
+
+  async getShadowStats(): Promise<ShadowStats> {
+    return this.fetch("/api/shadow/stats");
+  }
+
+  async listShadowConfigs(): Promise<{ items: ShadowConfig[] }> {
+    return this.fetch("/api/shadow/configs");
+  }
+
+  async upsertShadowConfig(data: CreateShadowConfigRequest): Promise<ShadowConfig> {
+    return this.fetch("/api/shadow/configs", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async deleteShadowConfig(id: string): Promise<void> {
+    await this.fetch(`/api/shadow/configs/${id}`, { method: "DELETE" });
+  }
+
+  // Safety
+  async getSafetyConfig(): Promise<SafetyConfig> {
+    return this.fetch("/api/safety/config");
+  }
+
+  async updateSafetyConfig(data: {
+    daily_spend_limit_cents: number;
+    monthly_spend_limit_cents: number;
+    max_concurrent_tasks: number;
+  }): Promise<SafetyConfig> {
+    return this.fetch("/api/safety/config", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async activateEmergencyStop(): Promise<SafetyConfig> {
+    return this.fetch("/api/safety/emergency-stop", { method: "POST" });
+  }
+
+  async deactivateEmergencyStop(): Promise<SafetyConfig> {
+    return this.fetch("/api/safety/emergency-stop", { method: "DELETE" });
+  }
+
+  // Usage
+  async getUsageByDay(days?: number): Promise<unknown> {
+    const search = new URLSearchParams();
+    if (days) search.set("days", String(days));
+    return this.fetch(`/api/usage/daily?${search}`);
+  }
+
+  async getUsageSummary(days?: number): Promise<unknown> {
+    const search = new URLSearchParams();
+    if (days) search.set("days", String(days));
+    return this.fetch(`/api/usage/summary?${search}`);
+  }
+
+  async getUsageByAgent(days?: number): Promise<unknown> {
+    const search = new URLSearchParams();
+    if (days) search.set("days", String(days));
+    return this.fetch(`/api/usage/by-agent?${search}`);
+  }
+
+  // Achievements
+  async listAchievements(): Promise<{ items: Achievement[] }> {
+    return this.fetch("/api/achievements");
+  }
+
+  // Brain Dumps
+  async listBrainDumps(): Promise<{ brain_dumps: BrainDump[]; total: number }> {
+    return this.fetch("/api/brain-dumps");
+  }
+
+  async createBrainDump(content: string): Promise<BrainDump> {
+    return this.fetch("/api/brain-dumps", {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    });
+  }
+
+  async processBrainDump(id: string, issueId?: string): Promise<BrainDump> {
+    return this.fetch(`/api/brain-dumps/${id}/process`, {
+      method: "POST",
+      body: JSON.stringify({ issue_id: issueId }),
+    });
+  }
+
+  async deleteBrainDump(id: string): Promise<void> {
+    await this.fetch(`/api/brain-dumps/${id}`, { method: "DELETE" });
+  }
+
+  async countUnprocessedBrainDumps(): Promise<{ count: number }> {
+    return this.fetch("/api/brain-dumps/unprocessed-count");
+  }
+
+  // Council (Approvals)
+  async listApprovals(params?: ListApprovalsParams): Promise<ListApprovalsResponse> {
+    const search = new URLSearchParams();
+    if (params?.status) search.set("status", params.status);
+    if (params?.risk_level) search.set("risk_level", params.risk_level);
+    if (params?.action_type) search.set("action_type", params.action_type);
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.offset) search.set("offset", String(params.offset));
+    return this.fetch(`/api/approvals?${search}`);
+  }
+
+  async approveApproval(id: string, note?: string): Promise<DecideApprovalResponse> {
+    return this.fetch(`/api/approvals/${id}/approve`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    });
+  }
+
+  async rejectApproval(id: string, note?: string): Promise<DecideApprovalResponse> {
+    return this.fetch(`/api/approvals/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    });
+  }
+
+  async countPendingApprovals(): Promise<{ count: number }> {
+    return this.fetch("/api/approvals/pending-count");
+  }
+
+  async listApprovalConfigs(): Promise<{ items: ApprovalConfig[] }> {
+    return this.fetch("/api/approval-configs");
+  }
+
+  async updateApprovalConfig(actionType: string, autonomyLevel: AutonomyLevel): Promise<ApprovalConfig> {
+    return this.fetch(`/api/approval-configs/${actionType}`, {
+      method: "PATCH",
+      body: JSON.stringify({ autonomy_level: autonomyLevel }),
+    });
+  }
+
+  async setAutoApprove(actionType: string, autoApprove: boolean): Promise<ApprovalConfig> {
+    return this.fetch(`/api/approval-configs/${actionType}/auto-approve`, {
+      method: "POST",
+      body: JSON.stringify({ auto_approve: autoApprove }),
+    });
+  }
+
+  async updateApprovalConfigDryRun(actionType: string, requireDryRun: boolean): Promise<ApprovalConfig> {
+    return this.fetch(`/api/approval-configs/${actionType}/dry-run`, {
+      method: "POST",
+      body: JSON.stringify({ require_dry_run: requireDryRun }),
+    });
+  }
+
+  async listTrustScores(): Promise<{ items: TrustScore[] }> {
+    return this.fetch("/api/trust-scores");
+  }
+
+  async listPromotionSuggestions(): Promise<{ items: TrustScore[] }> {
+    return this.fetch("/api/trust-scores/promotions");
+  }
+
+  async dismissPromotion(id: string): Promise<void> {
+    await this.fetch(`/api/trust-scores/${id}/dismiss`, { method: "POST" });
+  }
+
+  async acceptPromotion(id: string): Promise<void> {
+    await this.fetch(`/api/trust-scores/${id}/accept`, { method: "POST" });
+  }
+
+  async listContestedApprovals(): Promise<ListApprovalsResponse> {
+    return this.fetch("/api/approvals/contested");
+  }
+
+  async executeDryRun(approvalId: string): Promise<DryRunResult> {
+    return this.fetch(`/api/approvals/${approvalId}/dry-run`, { method: "POST" });
+  }
+
+  async listDryRunResults(): Promise<ListApprovalsResponse> {
+    return this.fetch("/api/approvals/dry-runs");
+  }
+
+  async batchApproveApprovals(params: BatchApproveParams): Promise<BatchApproveResponse> {
+    return this.fetch("/api/approvals/batch-approve", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  }
+
+  async batchRejectApprovals(params: BatchRejectParams): Promise<BatchRejectResponse> {
+    return this.fetch("/api/approvals/batch-reject", {
+      method: "POST",
+      body: JSON.stringify(params),
+    });
+  }
+
+  // Debug (Time-Travel)
+  async getDebugTimeline(issueId: string): Promise<DebugTimelineResponse> {
+    return this.fetch(`/api/issues/${issueId}/debug-timeline`);
+  }
+
+  async listForks(): Promise<ListForksResponse> {
+    return this.fetch("/api/forks");
+  }
+
+  async createFork(issueId: string, data: CreateForkRequest): Promise<TaskFork> {
+    return this.fetch(`/api/issues/${issueId}/forks`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  // Eisenhower Matrix
+  async listEisenhowerMatrix(): Promise<EisenhowerMatrixResponse> {
+    return this.fetch("/api/eisenhower");
+  }
+
+  async countEisenhowerQuadrants(): Promise<{ do: number; schedule: number; delegate: number; eliminate: number }> {
+    return this.fetch("/api/eisenhower/counts");
+  }
+
+  // Escalations
+  async listEscalations(): Promise<{ items: LoopDetection[] }> {
+    return this.fetch("/api/escalations");
+  }
+
+  async countEscalations(): Promise<{ count: number }> {
+    return this.fetch("/api/escalations/count");
+  }
+
+  async resolveEscalation(id: string, decision: EscalationDecision): Promise<LoopDetection> {
+    return this.fetch(`/api/escalations/${id}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ decision }),
+    });
+  }
+
+  // Goals
+  async listGoals(): Promise<{ items: Goal[] }> {
+    return this.fetch("/api/goals");
+  }
+
+  async createGoal(data: { title: string; description?: string; parent_goal_id?: string }): Promise<Goal> {
+    return this.fetch("/api/goals", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  }
+
+  async getGoalChain(goalId: string): Promise<{ chain: Goal[] }> {
+    return this.fetch(`/api/goals/${goalId}/chain`);
+  }
+
+  async setIssueGoal(issueId: string, goalId: string | null): Promise<void> {
+    await this.fetch(`/api/issues/${issueId}/goal`, {
+      method: "PUT",
+      body: JSON.stringify({ goal_id: goalId }),
+    });
+  }
+
+  // Missions
+  async listMissions(params?: ListMissionsParams): Promise<ListMissionsResponse> {
+    const search = new URLSearchParams();
+    if (params?.project_id) search.set("project_id", params.project_id);
+    if (params?.limit) search.set("limit", String(params.limit));
+    if (params?.offset) search.set("offset", String(params.offset));
+    return this.fetch(`/api/missions?${search}`);
+  }
+
+  async getMission(id: string): Promise<Mission> {
+    return this.fetch(`/api/missions/${id}`);
+  }
+
+  async startMission(projectId: string): Promise<Mission> {
+    return this.fetch("/api/missions", {
+      method: "POST",
+      body: JSON.stringify({ project_id: projectId }),
+    });
+  }
+
+  async stopMission(id: string): Promise<Mission> {
+    return this.fetch(`/api/missions/${id}/stop`, { method: "POST" });
+  }
+
+  // Observatory
+  async getObservatoryMemory(): Promise<MemoryState> {
+    return this.fetch("/api/observatory/memory");
+  }
+
+  async getObservatoryCorrections(): Promise<CorrectionsState> {
+    return this.fetch("/api/observatory/corrections");
+  }
+
+  async getObservatoryPatterns(): Promise<PatternsState> {
+    return this.fetch("/api/observatory/patterns");
+  }
+
+  async getObservatoryHealth(): Promise<HealthState> {
+    return this.fetch("/api/observatory/health");
+  }
+
+  async getObservatoryProfiles(): Promise<{ profiles: AgentProfile[] }> {
+    return this.fetch("/api/observatory/profiles");
+  }
+
+  async getObservatorySessions(): Promise<{ sessions: SessionEntry[]; daily_stats: DailySessionStat[] }> {
+    return this.fetch("/api/observatory/sessions");
+  }
+
+  // Daily Spend
+  async getDailySpend(): Promise<{ cost_usd: number }> {
+    return this.fetch("/api/usage/daily-spend");
+  }
+
+  // Scheduled Tasks count
+  async countEnabledScheduledTasks(): Promise<{ count: number }> {
+    return this.fetch("/api/scheduled-tasks/enabled-count");
+  }
+
+  // Dev Login
+  async devLogin(email: string, name: string): Promise<LoginResponse> {
+    return this.fetch("/auth/dev-login", {
+      method: "POST",
+      body: JSON.stringify({ email, name }),
+    });
   }
 }

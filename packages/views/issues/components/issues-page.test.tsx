@@ -116,6 +116,7 @@ const mockViewState = {
   sortDirection: "asc" as const,
   cardProperties: { priority: true, description: true, assignee: true, dueDate: true },
   listCollapsedStatuses: [] as string[],
+  boardCollapsedStatuses: [] as string[],
   setViewMode: vi.fn(),
   toggleStatusFilter: vi.fn(),
   togglePriorityFilter: vi.fn(),
@@ -131,6 +132,7 @@ const mockViewState = {
   setSortDirection: vi.fn(),
   toggleCardProperty: vi.fn(),
   toggleListCollapsed: vi.fn(),
+  toggleBoardCollapsed: vi.fn(),
 };
 
 vi.mock("@multica/core/issues/stores/view-store", () => ({

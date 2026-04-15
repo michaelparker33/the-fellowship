@@ -22,7 +22,7 @@ SELECT
     trigger_comment_id, chat_session_id,
     $1, continuation_index + 1, max_continuations, $2
 FROM agent_task_queue WHERE id = $1
-RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, continuation_of, continuation_index, max_continuations, progress_notes, failure_reason
+RETURNING id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, continuation_of, continuation_index, max_continuations, progress_notes, failure_reason
 `
 
 type CreateContinuationTaskParams struct {
@@ -53,6 +53,7 @@ func (q *Queries) CreateContinuationTask(ctx context.Context, arg CreateContinua
 		&i.WorkDir,
 		&i.TriggerCommentID,
 		&i.ChatSessionID,
+		&i.AutopilotRunID,
 		&i.ContinuationOf,
 		&i.ContinuationIndex,
 		&i.MaxContinuations,
@@ -64,12 +65,12 @@ func (q *Queries) CreateContinuationTask(ctx context.Context, arg CreateContinua
 
 const getTaskContinuationChain = `-- name: GetTaskContinuationChain :many
 WITH RECURSIVE chain AS (
-    SELECT atq.id, atq.agent_id, atq.issue_id, atq.status, atq.priority, atq.dispatched_at, atq.started_at, atq.completed_at, atq.result, atq.error, atq.created_at, atq.context, atq.runtime_id, atq.session_id, atq.work_dir, atq.trigger_comment_id, atq.chat_session_id, atq.continuation_of, atq.continuation_index, atq.max_continuations, atq.progress_notes, atq.failure_reason FROM agent_task_queue atq WHERE atq.id = $1
+    SELECT atq.id, atq.agent_id, atq.issue_id, atq.status, atq.priority, atq.dispatched_at, atq.started_at, atq.completed_at, atq.result, atq.error, atq.created_at, atq.context, atq.runtime_id, atq.session_id, atq.work_dir, atq.trigger_comment_id, atq.chat_session_id, atq.autopilot_run_id, atq.continuation_of, atq.continuation_index, atq.max_continuations, atq.progress_notes, atq.failure_reason FROM agent_task_queue atq WHERE atq.id = $1
     UNION ALL
-    SELECT t.id, t.agent_id, t.issue_id, t.status, t.priority, t.dispatched_at, t.started_at, t.completed_at, t.result, t.error, t.created_at, t.context, t.runtime_id, t.session_id, t.work_dir, t.trigger_comment_id, t.chat_session_id, t.continuation_of, t.continuation_index, t.max_continuations, t.progress_notes, t.failure_reason FROM agent_task_queue t
+    SELECT t.id, t.agent_id, t.issue_id, t.status, t.priority, t.dispatched_at, t.started_at, t.completed_at, t.result, t.error, t.created_at, t.context, t.runtime_id, t.session_id, t.work_dir, t.trigger_comment_id, t.chat_session_id, t.autopilot_run_id, t.continuation_of, t.continuation_index, t.max_continuations, t.progress_notes, t.failure_reason FROM agent_task_queue t
     JOIN chain c ON t.continuation_of = c.id
 )
-SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, continuation_of, continuation_index, max_continuations, progress_notes, failure_reason FROM chain ORDER BY continuation_index
+SELECT id, agent_id, issue_id, status, priority, dispatched_at, started_at, completed_at, result, error, created_at, context, runtime_id, session_id, work_dir, trigger_comment_id, chat_session_id, autopilot_run_id, continuation_of, continuation_index, max_continuations, progress_notes, failure_reason FROM chain ORDER BY continuation_index
 `
 
 type GetTaskContinuationChainRow struct {
@@ -90,6 +91,7 @@ type GetTaskContinuationChainRow struct {
 	WorkDir           pgtype.Text        `json:"work_dir"`
 	TriggerCommentID  pgtype.UUID        `json:"trigger_comment_id"`
 	ChatSessionID     pgtype.UUID        `json:"chat_session_id"`
+	AutopilotRunID    pgtype.UUID        `json:"autopilot_run_id"`
 	ContinuationOf    pgtype.UUID        `json:"continuation_of"`
 	ContinuationIndex int32              `json:"continuation_index"`
 	MaxContinuations  int32              `json:"max_continuations"`
@@ -125,6 +127,7 @@ func (q *Queries) GetTaskContinuationChain(ctx context.Context, id pgtype.UUID) 
 			&i.WorkDir,
 			&i.TriggerCommentID,
 			&i.ChatSessionID,
+			&i.AutopilotRunID,
 			&i.ContinuationOf,
 			&i.ContinuationIndex,
 			&i.MaxContinuations,

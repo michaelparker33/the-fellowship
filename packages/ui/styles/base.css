@@ -58,6 +58,17 @@
   margin-top: 2.5px;
 }
 
+/* Chat animations */
+@keyframes chat-slide-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes chat-action-fade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
