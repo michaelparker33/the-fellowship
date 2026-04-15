@@ -81,11 +81,9 @@ DELETE FROM agent WHERE runtime_id = $1 AND archived_at IS NOT NULL;
 
 -- name: MigrateAgentsToRuntime :execrows
 -- Migrates agents from stale offline runtimes to the newly registered runtime.
--- Only migrates from runtimes that match the same workspace, provider, owner,
--- AND whose daemon_id starts with the current daemon_id followed by '-'.
--- This scopes migration to old profile-suffixed runtimes from the same machine
--- (e.g. "MacBook-staging" matches daemon_id_prefix "MacBook") without touching
--- runtimes from other machines belonging to the same user.
+-- Matches any offline runtime for the same workspace, provider, and owner.
+-- This ensures agents are always reachable when the daemon restarts, even if
+-- the hostname changes (e.g. DHCP rename, network switch).
 UPDATE agent
 SET runtime_id = @new_runtime_id
 WHERE runtime_id IN (
@@ -95,7 +93,21 @@ WHERE runtime_id IN (
       AND ar.owner_id = @owner_id
       AND ar.id != @new_runtime_id
       AND ar.status = 'offline'
-      AND ar.daemon_id LIKE @daemon_id_prefix || '-%'
+);
+
+-- name: MigrateQueuedTasksToRuntime :execrows
+-- Rebinds queued/pending tasks from old offline runtimes to the new one,
+-- so they get picked up by the daemon after a restart.
+UPDATE agent_task_queue
+SET runtime_id = @new_runtime_id
+WHERE status IN ('queued', 'pending')
+  AND runtime_id IN (
+    SELECT ar.id FROM agent_runtime ar
+    WHERE ar.workspace_id = @workspace_id
+      AND ar.provider = @provider
+      AND ar.owner_id = @owner_id
+      AND ar.id != @new_runtime_id
+      AND ar.status = 'offline'
 );
 
 -- name: DeleteStaleOfflineRuntimes :many

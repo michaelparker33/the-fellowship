@@ -220,24 +220,36 @@ func (h *Handler) DaemonRegister(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Migrate agents from old offline runtimes on the same machine to the
-		// newly registered runtime. Uses the runtime's owner_id (preserved via
-		// COALESCE on upsert) so migration works with both PAT and daemon tokens.
-		// Scoped by daemon_id prefix so that only old profile-suffixed runtimes
-		// (e.g. "hostname-staging") from this machine are affected.
+		// Migrate agents from old offline runtimes to the newly registered
+		// runtime. Uses the runtime's owner_id (preserved via COALESCE on
+		// upsert) so migration works with both PAT and daemon tokens.
+		// Matches any offline runtime for the same provider/owner, regardless
+		// of hostname changes (DHCP rename, network switch, etc.).
 		effectiveOwnerID := registered.OwnerID
 		if effectiveOwnerID.Valid {
-			migrated, err := h.Queries.MigrateAgentsToRuntime(r.Context(), db.MigrateAgentsToRuntimeParams{
-				NewRuntimeID:   registered.ID,
-				WorkspaceID:    parseUUID(req.WorkspaceID),
-				Provider:       provider,
-				OwnerID:        effectiveOwnerID,
-				DaemonIDPrefix: strToText(req.DaemonID),
-			})
+			migrateParams := db.MigrateAgentsToRuntimeParams{
+				NewRuntimeID: registered.ID,
+				WorkspaceID:  parseUUID(req.WorkspaceID),
+				Provider:     provider,
+				OwnerID:      effectiveOwnerID,
+			}
+			migrated, err := h.Queries.MigrateAgentsToRuntime(r.Context(), migrateParams)
 			if err != nil {
 				slog.Warn("failed to migrate agents to new runtime", "runtime_id", uuidToString(registered.ID), "error", err)
 			} else if migrated > 0 {
 				slog.Info("migrated agents to new runtime", "runtime_id", uuidToString(registered.ID), "provider", provider, "migrated_count", migrated)
+			}
+			// Also rebind queued tasks so they get picked up immediately.
+			tasksMigrated, err := h.Queries.MigrateQueuedTasksToRuntime(r.Context(), db.MigrateQueuedTasksToRuntimeParams{
+				NewRuntimeID: migrateParams.NewRuntimeID,
+				WorkspaceID:  migrateParams.WorkspaceID,
+				Provider:     migrateParams.Provider,
+				OwnerID:      migrateParams.OwnerID,
+			})
+			if err != nil {
+				slog.Warn("failed to migrate queued tasks to new runtime", "error", err)
+			} else if tasksMigrated > 0 {
+				slog.Info("migrated queued tasks to new runtime", "runtime_id", uuidToString(registered.ID), "tasks_count", tasksMigrated)
 			}
 		}
 
@@ -668,8 +680,8 @@ func (h *Handler) FailTask(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.AgentID), "task_error", req.Error)
-	writeJSON(w, http.StatusOK, taskToResponse(*task))
+	slog.Info("task failed", "task_id", taskID, "agent_id", uuidToString(task.Task.AgentID), "task_error", req.Error)
+	writeJSON(w, http.StatusOK, taskToResponse(*task.Task))
 }
 
 // ---------------------------------------------------------------------------
