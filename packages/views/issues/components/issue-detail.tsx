@@ -11,7 +11,10 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Copy,
   Link2,
+  Maximize2,
+  Minimize2,
   MoreHorizontal,
   PanelRight,
   Pin,
@@ -170,7 +173,7 @@ function PropRow({
 }) {
   return (
     <div className="flex min-h-8 items-center gap-2 rounded-md px-2 -mx-2 hover:bg-accent/50 transition-colors">
-      <span className="w-16 shrink-0 text-xs text-muted-foreground">{label}</span>
+      <span className="w-16 shrink-0 text-xs text-text-tertiary">{label}</span>
       <div className="flex min-w-0 flex-1 items-center gap-1.5 text-xs truncate">
         {children}
       </div>
@@ -312,6 +315,8 @@ function IssuePickerDialog({
 interface IssueDetailProps {
   issueId: string;
   onDelete?: () => void;
+  /** Called when the user wants to go fullscreen from a popup view. */
+  onFullscreen?: () => void;
   defaultSidebarOpen?: boolean;
   layoutId?: string;
   /** When set, the issue detail will auto-scroll to this comment and briefly highlight it. */
@@ -322,7 +327,7 @@ interface IssueDetailProps {
 // IssueDetail
 // ---------------------------------------------------------------------------
 
-export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId }: IssueDetailProps) {
+export function IssueDetail({ issueId, onDelete, onFullscreen, defaultSidebarOpen = true, layoutId = "multica_issue_detail_layout", highlightCommentId }: IssueDetailProps) {
   const id = issueId;
   const router = useNavigation();
   const user = useAuthStore((s) => s.user);
@@ -535,7 +540,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
 
   if (!issue) {
     return (
-      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
+      <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-3 text-sm text-text-tertiary">
         <p>This issue does not exist or has been deleted in this workspace.</p>
         {!onDelete && (
           <Button variant="outline" size="sm" onClick={() => router.push("/issues")}>
@@ -559,28 +564,28 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               <>
                 <AppLink
                   href="/issues"
-                  className="text-muted-foreground hover:text-foreground transition-colors truncate shrink-0"
+                  className="text-text-tertiary hover:text-foreground transition-colors truncate shrink-0"
                 >
                   {workspace.name}
                 </AppLink>
-                <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                <ChevronRight className="h-3 w-3 text-text-quaternary shrink-0" />
               </>
             )}
             {parentIssue && (
               <>
                 <AppLink
                   href={`/issues/${parentIssue.id}`}
-                  className="text-muted-foreground hover:text-foreground transition-colors truncate shrink-0"
+                  className="text-text-tertiary hover:text-foreground transition-colors truncate shrink-0"
                 >
                   {parentIssue.identifier}
                 </AppLink>
-                <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+                <ChevronRight className="h-3 w-3 text-text-quaternary shrink-0" />
               </>
             )}
-            <span className="truncate text-muted-foreground">
+            <span className="truncate text-text-tertiary">
               {issue.identifier}
             </span>
-            <ChevronRight className="h-3 w-3 text-muted-foreground/50 shrink-0" />
+            <ChevronRight className="h-3 w-3 text-text-quaternary shrink-0" />
             <span className="truncate">{issue.title}</span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -593,7 +598,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="text-muted-foreground"
+                        className="text-text-tertiary"
                         disabled={!prevIssue}
                         onClick={() => prevIssue && router.push(`/issues/${prevIssue.id}`)}
                       >
@@ -603,7 +608,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                   />
                   <TooltipContent side="bottom">Previous issue</TooltipContent>
                 </Tooltip>
-                <span className="text-xs text-muted-foreground tabular-nums px-0.5">
+                <span className="text-xs text-text-tertiary tabular-nums px-0.5">
                   {currentIndex >= 0 ? currentIndex + 1 : "?"} / {allIssues.length}
                 </span>
                 <Tooltip>
@@ -612,7 +617,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       <Button
                         variant="ghost"
                         size="icon-xs"
-                        className="text-muted-foreground"
+                        className="text-text-tertiary"
                         disabled={!nextIssue}
                         onClick={() => nextIssue && router.push(`/issues/${nextIssue.id}`)}
                       >
@@ -624,13 +629,34 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                 </Tooltip>
               </div>
             )}
+            {/* Popup mode button — navigate back to issues and open modal */}
+            {!onDelete && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-text-tertiary"
+                      onClick={() => {
+                        useModalStore.getState().open("issue-detail", { issueId: issue.id });
+                        router.push("/issues");
+                      }}
+                    >
+                      <Minimize2 className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="bottom">Show as popup</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
                     variant="ghost"
                     size="icon-xs"
-                    className={cn("text-muted-foreground", isPinned && "text-foreground")}
+                    className={cn("text-text-tertiary", isPinned && "text-foreground")}
                     onClick={() => {
                       if (isPinned) {
                         deletePin.mutate({ itemType: "issue", itemId: issue.id });
@@ -648,7 +674,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button variant="ghost" size="icon-xs" className="text-muted-foreground">
+                  <Button variant="ghost" size="icon-xs" className="text-text-tertiary">
                     <MoreHorizontal className="h-4 w-4" />
                   </Button>
                 }
@@ -668,7 +694,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       >
                         <StatusIcon status={s} className="h-3.5 w-3.5" />
                         {STATUS_CONFIG[s].label}
-                        {issue.status === s && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                        {issue.status === s && <span className="ml-auto text-xs text-text-tertiary">✓</span>}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>
@@ -690,7 +716,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                           <PriorityIcon priority={p} className="h-3 w-3" inheritColor />
                           {PRIORITY_CONFIG[p].label}
                         </span>
-                        {issue.priority === p && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                        {issue.priority === p && <span className="ml-auto text-xs text-text-tertiary">✓</span>}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>
@@ -706,9 +732,9 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                     <DropdownMenuItem
                       onClick={() => handleUpdateField({ assignee_type: null, assignee_id: null })}
                     >
-                      <UserMinus className="h-3.5 w-3.5 text-muted-foreground" />
+                      <UserMinus className="h-3.5 w-3.5 text-text-tertiary" />
                       Unassigned
-                      {!issue.assignee_type && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                      {!issue.assignee_type && <span className="ml-auto text-xs text-text-tertiary">✓</span>}
                     </DropdownMenuItem>
                     {members.map((m) => (
                       <DropdownMenuItem
@@ -717,7 +743,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       >
                         <ActorAvatar actorType="member" actorId={m.user_id} size={16} />
                         {m.name}
-                        {issue.assignee_type === "member" && issue.assignee_id === m.user_id && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                        {issue.assignee_type === "member" && issue.assignee_id === m.user_id && <span className="ml-auto text-xs text-text-tertiary">✓</span>}
                       </DropdownMenuItem>
                     ))}
                     {agents.filter((a) => !a.archived_at && canAssignAgent(a, user?.id, currentMemberRole)).map((a) => (
@@ -727,7 +753,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       >
                         <ActorAvatar actorType="agent" actorId={a.id} size={16} />
                         {a.name}
-                        {issue.assignee_type === "agent" && issue.assignee_id === a.id && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                        {issue.assignee_type === "agent" && issue.assignee_id === a.id && <span className="ml-auto text-xs text-text-tertiary">✓</span>}
                       </DropdownMenuItem>
                     ))}
                   </DropdownMenuSubContent>
@@ -803,6 +829,23 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                   {isPinned ? "Unpin from sidebar" : "Pin to sidebar"}
                 </DropdownMenuItem>
 
+                {/* Duplicate */}
+                <DropdownMenuItem onClick={() => {
+                  useModalStore.getState().open("create-issue", {
+                    title: `Copy of ${issue.title}`,
+                    description: issue.description ?? undefined,
+                    status: issue.status,
+                    priority: issue.priority,
+                    assignee_type: issue.assignee_type ?? undefined,
+                    assignee_id: issue.assignee_id ?? undefined,
+                    due_date: issue.due_date ?? undefined,
+                    project_id: issue.project_id ?? undefined,
+                  });
+                }}>
+                  <Copy className="h-3.5 w-3.5" />
+                  Duplicate
+                </DropdownMenuItem>
+
                 {/* Copy link */}
                 <DropdownMenuItem onClick={() => {
                   const url = router.getShareableUrl
@@ -827,13 +870,31 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {/* Fullscreen — only in modal mode */}
+            {onFullscreen && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className="text-text-tertiary"
+                      onClick={onFullscreen}
+                    >
+                      <Maximize2 className="h-4 w-4" />
+                    </Button>
+                  }
+                />
+                <TooltipContent side="bottom">Open fullscreen</TooltipContent>
+              </Tooltip>
+            )}
             <Tooltip>
               <TooltipTrigger
                 render={
                   <Button
                     variant={sidebarOpen ? "secondary" : "ghost"}
                     size="icon-xs"
-                    className={sidebarOpen ? "" : "text-muted-foreground"}
+                    className={sidebarOpen ? "" : "text-text-tertiary"}
                     onClick={() => {
                       const panel = sidebarRef.current;
                       if (!panel) return;
@@ -918,7 +979,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           {parentIssue && (
             <AppLink
               href={`/issues/${parentIssue.id}`}
-              className="mt-2 inline-flex max-w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors group/parent"
+              className="mt-2 inline-flex max-w-full items-center gap-1.5 text-xs text-text-tertiary hover:text-foreground transition-colors group/parent"
             >
               <span className="font-medium shrink-0">Sub-issue of</span>
               <StatusIcon status={parentIssue.status} className="h-3.5 w-3.5 shrink-0" />
@@ -929,7 +990,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               {parentChildIssues.length > 0 && (() => {
                 const done = parentChildIssues.filter((c) => c.status === "done").length;
                 return (
-                  <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5 shrink-0">
+                  <span className="ml-1 inline-flex items-center gap-1 rounded-full bg-secondary px-1.5 py-0.5 shrink-0">
                     <ProgressRing done={done} total={parentChildIssues.length} size={11} />
                     <span className="tabular-nums text-[10.5px] font-medium">
                       {done}/{parentChildIssues.length}
@@ -978,7 +1039,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
             <div className="mt-6">
               <button
                 type="button"
-                className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                className="inline-flex items-center gap-1.5 text-xs text-text-tertiary hover:text-foreground transition-colors"
                 onClick={() =>
                   useModalStore.getState().open("create-issue", {
                     parent_issue_id: issue.id,
@@ -1004,15 +1065,15 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                   >
                     <ChevronDown
                       className={cn(
-                        "h-3.5 w-3.5 text-muted-foreground transition-transform",
+                        "h-3.5 w-3.5 text-text-tertiary transition-transform",
                         subIssuesCollapsed && "-rotate-90",
                       )}
                     />
                     <span>Sub-issues</span>
                   </button>
-                  <div className="inline-flex items-center gap-1.5 rounded-full bg-muted/60 px-2 py-0.5">
+                  <div className="inline-flex items-center gap-1.5 rounded-full bg-secondary px-2 py-0.5">
                     <ProgressRing done={doneCount} total={childIssues.length} size={11} />
-                    <span className="text-[11px] text-muted-foreground tabular-nums font-medium">
+                    <span className="text-[11px] text-text-tertiary tabular-nums font-medium">
                       {doneCount}/{childIssues.length}
                     </span>
                   </div>
@@ -1021,7 +1082,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                       render={
                         <button
                           type="button"
-                          className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                          className="ml-auto inline-flex h-7 w-7 items-center justify-center rounded-md text-text-tertiary hover:bg-accent hover:text-foreground transition-colors"
                           onClick={() =>
                             useModalStore.getState().open("create-issue", {
                               parent_issue_id: issue.id,
@@ -1054,14 +1115,14 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                             status={child.status}
                             className="h-[15px] w-[15px] shrink-0"
                           />
-                          <span className="text-[11px] text-muted-foreground tabular-nums font-medium shrink-0">
+                          <span className="text-[11px] text-text-tertiary tabular-nums font-medium shrink-0">
                             {child.identifier}
                           </span>
                           <span
                             className={cn(
                               "text-sm truncate flex-1",
                               isDone
-                                ? "text-muted-foreground"
+                                ? "text-text-tertiary"
                                 : "group-hover/row:text-foreground",
                             )}
                           >
@@ -1109,7 +1170,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                 ) : (<>
                 <button
                   onClick={handleToggleSubscribe}
-                  className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+                  className="text-xs text-text-tertiary hover:text-foreground transition-colors"
                 >
                   {isSubscribed ? "Unsubscribe" : "Subscribe"}
                 </button>
@@ -1130,7 +1191,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                         )}
                       </AvatarGroup>
                     ) : (
-                      <span className="flex items-center justify-center h-6 w-6 rounded-full border border-dashed border-muted-foreground/30 text-muted-foreground">
+                      <span className="flex items-center justify-center h-6 w-6 rounded-full border border-dashed border-muted-foreground/30 text-text-tertiary">
                         <Users className="h-3 w-3" />
                       </span>
                     )}
@@ -1292,13 +1353,13 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                         } else if (isPriorityChange && details.to) {
                           leadIcon = <PriorityIcon priority={details.to as IssuePriority} className="h-4 w-4 shrink-0" />;
                         } else if (isDueDateChange) {
-                          leadIcon = <Calendar className="h-4 w-4 shrink-0 text-muted-foreground" />;
+                          leadIcon = <Calendar className="h-4 w-4 shrink-0 text-text-tertiary" />;
                         } else {
                           leadIcon = <ActorAvatar actorType={entry.actor_type} actorId={entry.actor_id} size={16} />;
                         }
 
                         return (
-                          <div key={entry.id} className="flex items-center text-xs text-muted-foreground">
+                          <div key={entry.id} className="flex items-center text-xs text-text-tertiary">
                             <div className="mr-2 flex w-4 shrink-0 justify-center">
                               {leadIcon}
                             </div>
@@ -1353,10 +1414,10 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           {/* Properties section */}
           <div>
             <button
-              className={`flex w-full items-center gap-1 text-xs font-medium transition-colors mb-2 ${propertiesOpen ? "" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex w-full items-center gap-1 text-xs font-medium transition-colors mb-2 ${propertiesOpen ? "" : "text-text-tertiary hover:text-foreground"}`}
               onClick={() => setPropertiesOpen(!propertiesOpen)}
             >
-              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${propertiesOpen ? "rotate-90" : ""}`} />
+              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-tertiary transition-transform ${propertiesOpen ? "rotate-90" : ""}`} />
               Properties
             </button>
 
@@ -1408,7 +1469,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
               {/* Goal */}
               <PropRow label="Goal">
                 <Popover open={goalPickerOpen} onOpenChange={setGoalPickerOpen}>
-                  <PopoverTrigger className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors min-w-0 max-w-full">
+                  <PopoverTrigger className="flex items-center gap-1.5 text-xs text-text-tertiary hover:text-foreground transition-colors min-w-0 max-w-full">
                     <Target className="h-3.5 w-3.5 shrink-0" />
                     <span className="truncate">
                       {issue.goal_id
@@ -1429,7 +1490,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                                 setGoalPickerOpen(false);
                               }}
                             >
-                              <span className="text-muted-foreground">Remove goal</span>
+                              <span className="text-text-tertiary">Remove goal</span>
                             </CommandItem>
                           )}
                           {goals.map((g) => (
@@ -1440,9 +1501,9 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                                 setGoalPickerOpen(false);
                               }}
                             >
-                              <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                              <Target className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
                               <span className="truncate flex-1">{g.title}</span>
-                              {issue.goal_id === g.id && <span className="ml-auto text-xs text-muted-foreground">✓</span>}
+                              {issue.goal_id === g.id && <span className="ml-auto text-xs text-text-tertiary">✓</span>}
                             </CommandItem>
                           ))}
                         </CommandGroup>
@@ -1458,7 +1519,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           {goalChain.length > 0 && (
             <div>
               <div className="text-xs font-medium mb-2 flex items-center gap-1">
-                <Target className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                <Target className="h-3.5 w-3.5 shrink-0 text-text-tertiary" />
                 Goal ancestry
               </div>
               <div className="pl-2 space-y-1">
@@ -1468,9 +1529,9 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                     className="flex items-center gap-1.5 text-xs rounded-md px-2 py-1 -mx-2"
                     style={{ paddingLeft: `${0.5 + idx * 0.75}rem` }}
                   >
-                    {idx > 0 && <span className="text-muted-foreground shrink-0">↳</span>}
-                    <Target className={`h-3 w-3 shrink-0 ${g.id === issue.goal_id ? "text-amber-400" : "text-muted-foreground"}`} />
-                    <span className={`truncate ${g.id === issue.goal_id ? "font-medium" : "text-muted-foreground"}`}>
+                    {idx > 0 && <span className="text-text-tertiary shrink-0">↳</span>}
+                    <Target className={`h-3 w-3 shrink-0 ${g.id === issue.goal_id ? "text-amber-400" : "text-text-tertiary"}`} />
+                    <span className={`truncate ${g.id === issue.goal_id ? "font-medium" : "text-text-tertiary"}`}>
                       {g.title}
                     </span>
                   </div>
@@ -1483,7 +1544,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           {parentIssue && (
             <div>
               <div className="text-xs font-medium mb-2 flex items-center gap-1">
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground rotate-90" />
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-tertiary rotate-90" />
                 Parent issue
               </div>
               <div className="pl-2">
@@ -1492,7 +1553,7 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                   className="flex items-center gap-1.5 rounded-md px-2 py-1.5 -mx-2 text-xs hover:bg-accent/50 transition-colors group"
                 >
                   <StatusIcon status={parentIssue.status} className="h-3.5 w-3.5 shrink-0" />
-                  <span className="text-muted-foreground shrink-0">{parentIssue.identifier}</span>
+                  <span className="text-text-tertiary shrink-0">{parentIssue.identifier}</span>
                   <span className="truncate group-hover:text-foreground">{parentIssue.title}</span>
                 </AppLink>
               </div>
@@ -1502,10 +1563,10 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           {/* Details section */}
           <div>
             <button
-              className={`flex w-full items-center gap-1 text-xs font-medium transition-colors mb-2 ${detailsOpen ? "" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex w-full items-center gap-1 text-xs font-medium transition-colors mb-2 ${detailsOpen ? "" : "text-text-tertiary hover:text-foreground"}`}
               onClick={() => setDetailsOpen(!detailsOpen)}
             >
-              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform ${detailsOpen ? "rotate-90" : ""}`} />
+              <ChevronRight className={`h-3.5 w-3.5 shrink-0 text-text-tertiary transition-transform ${detailsOpen ? "rotate-90" : ""}`} />
               Details
             </button>
 
@@ -1519,10 +1580,10 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
                 <span className="truncate">{getActorName(issue.creator_type, issue.creator_id)}</span>
               </PropRow>
               <PropRow label="Created">
-                <span className="text-muted-foreground">{shortDate(issue.created_at)}</span>
+                <span className="text-text-tertiary">{shortDate(issue.created_at)}</span>
               </PropRow>
               <PropRow label="Updated">
-                <span className="text-muted-foreground">{shortDate(issue.updated_at)}</span>
+                <span className="text-text-tertiary">{shortDate(issue.updated_at)}</span>
               </PropRow>
             </div>}
           </div>
@@ -1531,25 +1592,25 @@ export function IssueDetail({ issueId, onDelete, defaultSidebarOpen = true, layo
           {usage && usage.task_count > 0 && (
             <div>
               <div className="text-xs font-medium mb-2 flex items-center gap-1">
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground rotate-90" />
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 text-text-tertiary rotate-90" />
                 Token usage
               </div>
               <div className="space-y-0.5 pl-2">
                 <PropRow label="Input">
-                  <span className="text-muted-foreground">{formatTokenCount(usage.total_input_tokens)}</span>
+                  <span className="text-text-tertiary">{formatTokenCount(usage.total_input_tokens)}</span>
                 </PropRow>
                 <PropRow label="Output">
-                  <span className="text-muted-foreground">{formatTokenCount(usage.total_output_tokens)}</span>
+                  <span className="text-text-tertiary">{formatTokenCount(usage.total_output_tokens)}</span>
                 </PropRow>
                 {(usage.total_cache_read_tokens > 0 || usage.total_cache_write_tokens > 0) && (
                   <PropRow label="Cache">
-                    <span className="text-muted-foreground">
+                    <span className="text-text-tertiary">
                       {formatTokenCount(usage.total_cache_read_tokens)} read / {formatTokenCount(usage.total_cache_write_tokens)} write
                     </span>
                   </PropRow>
                 )}
                 <PropRow label="Runs">
-                  <span className="text-muted-foreground">{usage.task_count}</span>
+                  <span className="text-text-tertiary">{usage.task_count}</span>
                 </PropRow>
               </div>
             </div>

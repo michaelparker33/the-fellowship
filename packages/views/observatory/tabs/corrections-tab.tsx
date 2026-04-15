@@ -55,7 +55,7 @@ export function CorrectionsTab({ data, isLoading }: CorrectionsTabProps) {
     return (
       <div className="p-6 space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="border rounded-lg h-20 animate-pulse bg-muted/20" />
+          <div key={i} className="border rounded-lg h-20 animate-pulse bg-secondary" />
         ))}
       </div>
     );

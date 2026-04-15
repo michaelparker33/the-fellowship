@@ -22,7 +22,7 @@ export function InfiniteScrollSentinel({ onVisible, loading }: { onVisible: () =
 
   return (
     <div ref={sentinelRef} className="flex items-center justify-center py-2">
-      {loading && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+      {loading && <Loader2 className="size-3 animate-spin text-text-tertiary" />}
     </div>
   );
 }

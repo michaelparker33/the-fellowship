@@ -1,9 +1,9 @@
 "use client";
 
-import { memo } from "react";
-import { AppLink } from "../../navigation";
+import { memo, useCallback } from "react";
 import type { Issue } from "@multica/core/types";
 import { ActorAvatar } from "../../common/actor-avatar";
+import { useModalStore } from "@multica/core/modals";
 import { useIssueSelectionStore } from "@multica/core/issues/stores/selection-store";
 import { PriorityIcon } from "./priority-icon";
 import { ProgressRing } from "./progress-ring";
@@ -28,13 +28,19 @@ export const ListRow = memo(function ListRow({
   childProgress?: ChildProgress;
 }) {
   const selected = useIssueSelectionStore((s) => s.selectedIds.has(issue.id));
+  const focused = useIssueSelectionStore((s) => s.focusedId === issue.id);
   const toggle = useIssueSelectionStore((s) => s.toggle);
+
+  const openIssueModal = useCallback(() => {
+    useModalStore.getState().open("issue-detail", { issueId: issue.id });
+  }, [issue.id]);
 
   return (
     <div
-      className={`group/row flex h-9 items-center gap-2 px-4 text-sm transition-colors hover:bg-accent/50 ${
+      data-issue-id={issue.id}
+      className={`group/row flex h-9 items-center gap-2 px-4 text-sm transition-colors duration-[200ms] ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-accent/50 ${
         selected ? "bg-accent/30" : ""
-      }`}
+      } ${focused ? "bg-accent/40 ring-1 ring-brand/30" : ""}`}
     >
       <div className="relative flex shrink-0 items-center justify-center w-4 h-4">
         <PriorityIcon
@@ -50,26 +56,27 @@ export const ListRow = memo(function ListRow({
           }`}
         />
       </div>
-      <AppLink
-        href={`/issues/${issue.id}`}
-        className="flex flex-1 items-center gap-2 min-w-0"
+      <button
+        type="button"
+        onClick={openIssueModal}
+        className="flex flex-1 items-center gap-2 min-w-0 text-left cursor-pointer"
       >
-        <span className="w-16 shrink-0 text-xs text-muted-foreground">
+        <span className="w-16 shrink-0 text-xs text-text-tertiary">
           {issue.identifier}
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-1.5">
           <span className="truncate">{issue.title}</span>
           {childProgress && (
-            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted/60 px-1.5 py-0.5">
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-secondary px-1.5 py-0.5">
               <ProgressRing done={childProgress.done} total={childProgress.total} size={14} />
-              <span className="text-[11px] text-muted-foreground tabular-nums font-medium">
+              <span className="text-[11px] text-text-tertiary tabular-nums font-medium">
                 {childProgress.done}/{childProgress.total}
               </span>
             </span>
           )}
         </span>
         {issue.due_date && (
-          <span className="shrink-0 text-xs text-muted-foreground">
+          <span className="shrink-0 text-xs text-text-tertiary">
             {formatDate(issue.due_date)}
           </span>
         )}
@@ -80,7 +87,7 @@ export const ListRow = memo(function ListRow({
             size={20}
           />
         )}
-      </AppLink>
+      </button>
     </div>
   );
 });

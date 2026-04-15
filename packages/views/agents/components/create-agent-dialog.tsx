@@ -112,7 +112,7 @@ export function CreateAgentDialog({
                 onClick={() => setVisibility("workspace")}
                 className={`flex flex-1 items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
                   visibility === "workspace"
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-brand/10"
                     : "border-border hover:bg-muted"
                 }`}
               >
@@ -127,7 +127,7 @@ export function CreateAgentDialog({
                 onClick={() => setVisibility("private")}
                 className={`flex flex-1 items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
                   visibility === "private"
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-brand/10"
                     : "border-border hover:bg-muted"
                 }`}
               >

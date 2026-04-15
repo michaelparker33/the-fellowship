@@ -70,7 +70,7 @@ const colorClasses: Record<EventColor, { bg: string; bgActive: string; label: st
   agent: { bg: "bg-emerald-400/60", bgActive: "bg-emerald-500", label: "bg-emerald-500" },
   thinking: { bg: "bg-violet-400/60", bgActive: "bg-violet-500", label: "bg-violet-500/20 text-violet-700 dark:text-violet-300" },
   tool: { bg: "bg-blue-400/60", bgActive: "bg-blue-500", label: "bg-blue-500/20 text-blue-700 dark:text-blue-300" },
-  result: { bg: "bg-slate-300/60 dark:bg-slate-600/60", bgActive: "bg-slate-400 dark:bg-slate-500", label: "bg-muted text-muted-foreground" },
+  result: { bg: "bg-slate-300/60 dark:bg-slate-600/60", bgActive: "bg-slate-400 dark:bg-slate-500", label: "bg-muted text-text-tertiary" },
   error: { bg: "bg-red-400/60", bgActive: "bg-red-500", label: "bg-red-500/20 text-red-700 dark:text-red-300" },
 };
 
@@ -254,7 +254,7 @@ export function AgentTranscriptDialog({
       Failed
     </span>
   ) : (
-    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground capitalize">
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-text-tertiary capitalize">
       {task.status}
     </span>
   );
@@ -287,14 +287,14 @@ export function AgentTranscriptDialog({
             <div className="ml-auto flex items-center gap-1">
               <button
                 onClick={handleCopyAll}
-                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                className="flex items-center gap-1 rounded px-2 py-1 text-xs text-text-tertiary hover:text-foreground hover:bg-accent transition-colors"
               >
                 {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
                 {copied ? "Copied" : "Copy all"}
               </button>
               <button
                 onClick={() => onOpenChange(false)}
-                className="flex items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent transition-colors"
+                className="flex items-center justify-center rounded p-1 text-text-tertiary hover:text-foreground hover:bg-accent transition-colors"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -316,7 +316,7 @@ export function AgentTranscriptDialog({
                 icon={runtimeInfo.runtime_mode === "cloud" ? <Cloud className="h-3 w-3" /> : <Monitor className="h-3 w-3" />}
               >
                 {runtimeInfo.name}
-                <span className="text-muted-foreground/60 ml-0.5">({runtimeInfo.runtime_mode})</span>
+                <span className="text-text-quaternary ml-0.5">({runtimeInfo.runtime_mode})</span>
               </MetadataChip>
             )}
 
@@ -371,7 +371,7 @@ export function AgentTranscriptDialog({
           className="flex-1 overflow-y-auto min-h-0"
         >
           {items.length === 0 ? (
-            <div className="flex items-center justify-center h-full text-sm text-muted-foreground">
+            <div className="flex items-center justify-center h-full text-sm text-text-tertiary">
               {isLive ? (
                 <div className="flex items-center gap-2">
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -410,7 +410,7 @@ export function AgentTranscriptDialog({
 
 function MetadataChip({ icon, children }: { icon?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <span className="inline-flex items-center gap-1 rounded-md border bg-muted/50 px-2 py-0.5 text-[11px] text-muted-foreground">
+    <span className="inline-flex items-center gap-1 rounded-md border bg-secondary px-2 py-0.5 text-[11px] text-text-tertiary">
       {icon}
       {children}
     </span>
@@ -481,7 +481,7 @@ function TimelineBar({
             <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block z-10 pointer-events-none">
               <div className="rounded bg-popover border px-2 py-1 text-[10px] text-popover-foreground shadow-md whitespace-nowrap">
                 {getEventLabel(items[seg.startIdx]!)}
-                {seg.count > 1 && <span className="text-muted-foreground ml-1">+{seg.count - 1}</span>}
+                {seg.count > 1 && <span className="text-text-tertiary ml-1">+{seg.count - 1}</span>}
               </div>
             </div>
           </button>
@@ -546,7 +546,7 @@ const TranscriptEventRow = ({
             className={cn(
               "flex-1 text-left text-xs min-w-0 py-0.5 transition-colors",
               hasDetail ? "cursor-pointer hover:text-foreground" : "cursor-default",
-              item.type === "error" ? "text-destructive" : "text-muted-foreground",
+              item.type === "error" ? "text-destructive" : "text-text-tertiary",
             )}
             disabled={!hasDetail}
           >
@@ -554,7 +554,7 @@ const TranscriptEventRow = ({
               {hasDetail && (
                 <ChevronRight
                   className={cn(
-                    "h-3 w-3 shrink-0 mt-0.5 text-muted-foreground/50 transition-transform",
+                    "h-3 w-3 shrink-0 mt-0.5 text-text-quaternary transition-transform",
                     expanded && "rotate-90",
                   )}
                 />
@@ -564,7 +564,7 @@ const TranscriptEventRow = ({
           </CollapsibleTrigger>
 
           {/* Seq number / index */}
-          <span className="shrink-0 text-[10px] text-muted-foreground/50 tabular-nums mt-1">
+          <span className="shrink-0 text-[10px] text-text-quaternary tabular-nums mt-1">
             #{item.seq}
           </span>
         </div>
@@ -573,7 +573,7 @@ const TranscriptEventRow = ({
         {hasDetail && (
           <CollapsibleContent>
             <div className="px-4 pb-3">
-              <div className="ml-[72px] rounded bg-muted/40 border">
+              <div className="ml-[72px] rounded bg-secondary border">
                 <EventDetailContent item={item} />
               </div>
             </div>
@@ -590,13 +590,13 @@ function EventDetailContent({ item }: { item: TimelineItem }) {
   switch (item.type) {
     case "tool_use":
       return (
-        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-muted-foreground whitespace-pre-wrap break-all">
+        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-text-tertiary whitespace-pre-wrap break-all">
           {item.input ? redactSecrets(JSON.stringify(item.input, null, 2)) : ""}
         </pre>
       );
     case "tool_result":
       return (
-        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-muted-foreground whitespace-pre-wrap break-all">
+        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-text-tertiary whitespace-pre-wrap break-all">
           {item.output
             ? item.output.length > 4000
               ? redactSecrets(item.output.slice(0, 4000)) + "\n... (truncated)"
@@ -606,13 +606,13 @@ function EventDetailContent({ item }: { item: TimelineItem }) {
       );
     case "thinking":
       return (
-        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-muted-foreground whitespace-pre-wrap break-words">
+        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-text-tertiary whitespace-pre-wrap break-words">
           {item.content ?? ""}
         </pre>
       );
     case "text":
       return (
-        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-muted-foreground whitespace-pre-wrap break-words">
+        <pre className="max-h-60 overflow-auto p-3 text-[11px] text-text-tertiary whitespace-pre-wrap break-words">
           {item.content ?? ""}
         </pre>
       );

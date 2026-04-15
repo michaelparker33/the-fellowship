@@ -142,12 +142,12 @@ func (q *Queries) GetShadowRun(ctx context.Context, id pgtype.UUID) (ShadowRun, 
 
 const getShadowRunStats = `-- name: GetShadowRunStats :one
 SELECT
-    count(*) as total_runs,
-    avg(quality_score) FILTER (WHERE quality_score IS NOT NULL) as avg_quality,
-    avg(shadow_cost_usd) FILTER (WHERE shadow_cost_usd IS NOT NULL) as avg_shadow_cost,
-    avg(primary_cost_usd) FILTER (WHERE primary_cost_usd IS NOT NULL) as avg_primary_cost,
-    avg(shadow_duration_ms) FILTER (WHERE shadow_duration_ms IS NOT NULL) as avg_shadow_duration,
-    avg(primary_duration_ms) FILTER (WHERE primary_duration_ms IS NOT NULL) as avg_primary_duration
+    count(*)::bigint as total_runs,
+    COALESCE(avg(quality_score), 0)::float8 as avg_quality,
+    COALESCE(avg(shadow_cost_usd), 0)::float8 as avg_shadow_cost,
+    COALESCE(avg(primary_cost_usd), 0)::float8 as avg_primary_cost,
+    COALESCE(avg(shadow_duration_ms), 0)::float8 as avg_shadow_duration,
+    COALESCE(avg(primary_duration_ms), 0)::float8 as avg_primary_duration
 FROM shadow_run
 WHERE workspace_id = $1
 `

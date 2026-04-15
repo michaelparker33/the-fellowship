@@ -116,6 +116,7 @@ func NewRouter(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus) chi.Route
 	// Auth (public)
 	r.Post("/auth/send-code", h.SendCode)
 	r.Post("/auth/verify-code", h.VerifyCode)
+	r.Post("/auth/dev-login", h.DevLogin)
 	r.Post("/auth/google", h.GoogleLogin)
 	r.Post("/auth/logout", h.Logout)
 

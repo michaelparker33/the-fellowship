@@ -320,7 +320,7 @@ function SingleAgentLiveCard({ task, items, issueId, agentName }: SingleAgentLiv
     <div className="rounded-lg border border-info/20 bg-info/5 backdrop-blur-sm">
       {/* Header — click to toggle timeline */}
       <div
-        className="group flex items-center gap-2 px-3 py-2 cursor-pointer select-none text-muted-foreground hover:text-foreground transition-colors"
+        className="group flex items-center gap-2 px-3 py-2 cursor-pointer select-none text-text-tertiary hover:text-foreground transition-colors"
         role="button"
         tabIndex={0}
         aria-expanded={open}
@@ -342,15 +342,15 @@ function SingleAgentLiveCard({ task, items, issueId, agentName }: SingleAgentLiv
         <div className="flex items-center gap-1.5 text-xs min-w-0">
           <Loader2 className="h-3 w-3 animate-spin text-info shrink-0" />
           <span className="font-medium text-foreground truncate">{agentName} is working</span>
-          <span className="text-muted-foreground tabular-nums shrink-0">{elapsed}</span>
+          <span className="text-text-tertiary tabular-nums shrink-0">{elapsed}</span>
           {toolCount > 0 && (
-            <span className="text-muted-foreground shrink-0">{toolCount} tools</span>
+            <span className="text-text-tertiary shrink-0">{toolCount} tools</span>
           )}
         </div>
         <div className="ml-auto flex items-center gap-1 shrink-0">
           <button
             onClick={(e) => { e.stopPropagation(); setTranscriptOpen(true); }}
-            className="flex items-center justify-center rounded p-1 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors"
+            className="flex items-center justify-center rounded p-1 text-text-tertiary hover:text-foreground hover:bg-accent/50 transition-colors"
             title="Expand transcript"
           >
             <Maximize2 className="h-3 w-3" />
@@ -358,7 +358,7 @@ function SingleAgentLiveCard({ task, items, issueId, agentName }: SingleAgentLiv
           <button
             onClick={(e) => { e.stopPropagation(); handleCancel(); }}
             disabled={cancelling}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-text-tertiary hover:text-destructive hover:bg-destructive/10 transition-colors disabled:opacity-50"
             title="Stop agent"
           >
             {cancelling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Square className="h-3 w-3" />}
@@ -395,7 +395,7 @@ function SingleAgentLiveCard({ task, items, issueId, agentName }: SingleAgentLiv
                       setAutoScroll(true);
                     }
                   }}
-                  className="sticky bottom-0 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-background border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground shadow-sm"
+                  className="sticky bottom-0 left-1/2 -translate-x-1/2 flex items-center gap-1 rounded-full bg-background border px-2 py-0.5 text-xs text-text-tertiary hover:text-foreground shadow-sm"
                 >
                   <ArrowDown className="h-3 w-3" />
                   Latest
@@ -473,7 +473,7 @@ export function TaskRunHistory({ issueId }: TaskRunHistoryProps) {
 
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
-      <CollapsibleTrigger className="flex w-full items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors py-1">
+      <CollapsibleTrigger className="flex w-full items-center gap-1.5 text-xs text-text-tertiary hover:text-foreground transition-colors py-1">
         <ChevronRight className={cn("h-3 w-3 transition-transform", open && "rotate-90")} />
         <Clock className="h-3 w-3" />
         <span>Execution history ({completedTasks.length})</span>
@@ -516,24 +516,24 @@ function TaskRunEntry({ task }: { task: AgentTask }) {
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-xs hover:bg-accent/30 transition-colors border border-transparent hover:border-border">
-        <ChevronRight className={cn("h-3 w-3 shrink-0 text-muted-foreground transition-transform", open && "rotate-90")} />
+        <ChevronRight className={cn("h-3 w-3 shrink-0 text-text-tertiary transition-transform", open && "rotate-90")} />
         {task.status === "completed" ? (
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-success" />
         ) : (
           <XCircle className="h-3.5 w-3.5 shrink-0 text-destructive" />
         )}
-        <span className="text-muted-foreground">
+        <span className="text-text-tertiary">
           {new Date(task.created_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
         </span>
-        {duration && <span className="text-muted-foreground">{duration}</span>}
+        {duration && <span className="text-text-tertiary">{duration}</span>}
         {task.continuation_index > 0 && (
-          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-text-tertiary">
             <RefreshCw className="h-2.5 w-2.5" />
             Attempt {task.continuation_index + 1}/{task.max_continuations + 1}
           </span>
         )}
         {task.failure_reason && (
-          <span className="text-[10px] text-muted-foreground truncate max-w-[120px]" title={task.failure_reason}>
+          <span className="text-[10px] text-text-tertiary truncate max-w-[120px]" title={task.failure_reason}>
             {task.failure_reason}
           </span>
         )}
@@ -562,7 +562,7 @@ function TaskRunEntry({ task }: { task: AgentTask }) {
               e.currentTarget.click();
             }
           }}
-          className="flex items-center justify-center rounded p-0.5 text-muted-foreground hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
+          className="flex items-center justify-center rounded p-0.5 text-text-tertiary hover:text-foreground hover:bg-accent/50 transition-colors cursor-pointer"
           title="Expand transcript"
         >
           <Maximize2 className="h-3 w-3" />
@@ -570,18 +570,18 @@ function TaskRunEntry({ task }: { task: AgentTask }) {
       </CollapsibleTrigger>
       <CollapsibleContent>
         {task.progress_notes && (
-          <div className="ml-5 mt-1 rounded border border-border/50 bg-muted/20 px-3 py-2 text-xs text-muted-foreground whitespace-pre-wrap">
+          <div className="ml-5 mt-1 rounded border border-border bg-secondary px-3 py-2 text-xs text-text-tertiary whitespace-pre-wrap">
             <span className="font-medium text-foreground/70">Progress notes:</span>{"\n"}{task.progress_notes}
           </div>
         )}
-        <div className="ml-5 mt-1 max-h-64 overflow-y-auto rounded border bg-muted/30 px-3 py-2 space-y-0.5">
+        <div className="ml-5 mt-1 max-h-64 overflow-y-auto rounded border bg-secondary px-3 py-2 space-y-0.5">
           {items === null ? (
-            <div className="flex items-center gap-2 text-xs text-muted-foreground py-2">
+            <div className="flex items-center gap-2 text-xs text-text-tertiary py-2">
               <Loader2 className="h-3 w-3 animate-spin" />
               Loading...
             </div>
           ) : items.length === 0 ? (
-            <p className="text-xs text-muted-foreground py-2">No execution data recorded.</p>
+            <p className="text-xs text-text-tertiary py-2">No execution data recorded.</p>
           ) : (
             items.map((item, idx) => (
               <TimelineRow key={`${item.seq}-${idx}`} item={item} />
@@ -633,17 +633,17 @@ function ToolCallRow({ item }: { item: TimelineItem }) {
       <CollapsibleTrigger className="flex w-full items-center gap-1.5 rounded px-1 -mx-1 py-0.5 text-xs hover:bg-accent/30 transition-colors">
         <ChevronRight
           className={cn(
-            "h-3 w-3 shrink-0 text-muted-foreground transition-transform",
+            "h-3 w-3 shrink-0 text-text-tertiary transition-transform",
             open && "rotate-90",
             !hasInput && "invisible",
           )}
         />
         <span className="font-medium text-foreground shrink-0">{item.tool}</span>
-        {summary && <span className="truncate text-muted-foreground">{summary}</span>}
+        {summary && <span className="truncate text-text-tertiary">{summary}</span>}
       </CollapsibleTrigger>
       {hasInput && (
         <CollapsibleContent>
-          <pre className="ml-[18px] mt-0.5 max-h-32 overflow-auto rounded bg-muted/50 p-2 text-[11px] text-muted-foreground whitespace-pre-wrap break-all">
+          <pre className="ml-[18px] mt-0.5 max-h-32 overflow-auto rounded bg-secondary p-2 text-[11px] text-text-tertiary whitespace-pre-wrap break-all">
             {redactSecrets(JSON.stringify(item.input, null, 2))}
           </pre>
         </CollapsibleContent>
@@ -663,14 +663,14 @@ function ToolResultRow({ item }: { item: TimelineItem }) {
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex w-full items-start gap-1.5 rounded px-1 -mx-1 py-0.5 text-xs hover:bg-accent/30 transition-colors">
         <ChevronRight
-          className={cn("h-3 w-3 shrink-0 text-muted-foreground transition-transform mt-0.5", open && "rotate-90")}
+          className={cn("h-3 w-3 shrink-0 text-text-tertiary transition-transform mt-0.5", open && "rotate-90")}
         />
-        <span className="text-muted-foreground/70 truncate">
+        <span className="text-text-quaternary truncate">
           {item.tool ? `${item.tool} result: ` : "result: "}{preview}
         </span>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="ml-[18px] mt-0.5 max-h-40 overflow-auto rounded bg-muted/50 p-2 text-[11px] text-muted-foreground whitespace-pre-wrap break-all">
+        <pre className="ml-[18px] mt-0.5 max-h-40 overflow-auto rounded bg-secondary p-2 text-[11px] text-text-tertiary whitespace-pre-wrap break-all">
           {output.length > 4000 ? output.slice(0, 4000) + "\n... (truncated)" : output}
         </pre>
       </CollapsibleContent>
@@ -689,10 +689,10 @@ function ThinkingRow({ item }: { item: TimelineItem }) {
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="flex w-full items-start gap-1.5 rounded px-1 -mx-1 py-0.5 text-xs hover:bg-accent/30 transition-colors">
         <Brain className="h-3 w-3 shrink-0 text-info/60 mt-0.5" />
-        <span className="text-muted-foreground italic truncate">{preview}</span>
+        <span className="text-text-tertiary italic truncate">{preview}</span>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <pre className="ml-[18px] mt-0.5 max-h-40 overflow-auto rounded bg-info/5 p-2 text-[11px] text-muted-foreground whitespace-pre-wrap break-words">
+        <pre className="ml-[18px] mt-0.5 max-h-40 overflow-auto rounded bg-info/5 p-2 text-[11px] text-text-tertiary whitespace-pre-wrap break-words">
           {text}
         </pre>
       </CollapsibleContent>
@@ -710,7 +710,7 @@ function TextRow({ item }: { item: TimelineItem }) {
   return (
     <div className="flex items-start gap-1.5 px-1 -mx-1 py-0.5 text-xs">
       <span className="h-3 w-3 shrink-0" />
-      <span className="text-muted-foreground/60 truncate">{last}</span>
+      <span className="text-text-quaternary truncate">{last}</span>
     </div>
   );
 }

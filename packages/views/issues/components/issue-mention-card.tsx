@@ -32,7 +32,7 @@ export function IssueMentionCard({ issueId, fallbackLabel }: IssueMentionCardPro
         href={`/issues/${issueId}`}
         className="issue-mention inline-flex items-center gap-1.5 rounded-md border mx-0.5 px-2 py-0.5 text-xs hover:bg-accent transition-colors cursor-pointer max-w-72"
       >
-        <span className="font-medium text-muted-foreground">
+        <span className="font-medium text-text-tertiary">
           {fallbackLabel ?? issueId.slice(0, 8)}
         </span>
       </AppLink>
@@ -45,7 +45,7 @@ export function IssueMentionCard({ issueId, fallbackLabel }: IssueMentionCardPro
       className="issue-mention inline-flex items-center gap-1.5 rounded-md border mx-0.5 px-2 py-0.5 text-xs hover:bg-accent transition-colors cursor-pointer max-w-72"
     >
       <StatusIcon status={issue.status} className="h-3.5 w-3.5 shrink-0" />
-      <span className="font-medium text-muted-foreground shrink-0">{issue.identifier}</span>
+      <span className="font-medium text-text-tertiary shrink-0">{issue.identifier}</span>
       <span className="text-foreground truncate">{issue.title}</span>
     </AppLink>
   );

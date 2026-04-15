@@ -186,7 +186,7 @@ export function RuntimeDetail({ runtime }: { runtime: AgentRuntime }) {
             <h3 className="text-xs font-medium text-muted-foreground mb-2">
               Metadata
             </h3>
-            <div className="rounded-lg border bg-muted/30 p-3">
+            <div className="rounded-lg border bg-card p-3">
               <pre className="text-xs font-mono whitespace-pre-wrap break-all">
                 {JSON.stringify(runtime.metadata, null, 2)}
               </pre>

@@ -95,7 +95,7 @@ export function ListView({
 
           return (
             <Accordion.Item key={status} value={status}>
-              <Accordion.Header className="group/header flex h-10 items-center rounded-lg bg-muted/40 transition-colors hover:bg-accent/30">
+              <Accordion.Header className="group/header flex h-10 items-center rounded-lg bg-secondary transition-colors hover:bg-accent">
                 <div className="pl-3 flex items-center">
                   <input
                     type="checkbox"
@@ -114,12 +114,12 @@ export function ListView({
                   />
                 </div>
                 <Accordion.Trigger className="group/trigger flex flex-1 items-center gap-2 px-2 h-full text-left outline-none">
-                  <ChevronRight className="size-3.5 shrink-0 text-muted-foreground transition-transform group-aria-expanded/trigger:rotate-90" />
+                  <ChevronRight className="size-3.5 shrink-0 text-text-tertiary transition-transform group-aria-expanded/trigger:rotate-90" />
                   <span className={`inline-flex items-center gap-1.5 rounded px-2 py-0.5 text-xs font-semibold ${cfg.badgeBg} ${cfg.badgeText}`}>
                     <StatusIcon status={status} className="h-3 w-3" inheritColor />
                     {cfg.label}
                   </span>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-text-tertiary">
                     {status === "done" ? displayDoneTotal : statusIssues.length}
                   </span>
                 </Accordion.Trigger>
@@ -130,7 +130,7 @@ export function ListView({
                         <Button
                           variant="ghost"
                           size="icon-sm"
-                          className="rounded-full text-muted-foreground opacity-0 group-hover/header:opacity-100 transition-opacity"
+                          className="rounded-full text-text-tertiary opacity-0 group-hover/header:opacity-100 transition-opacity"
                           onClick={() =>
                             useModalStore
                               .getState()
@@ -156,7 +156,7 @@ export function ListView({
                     )}
                   </>
                 ) : (
-                  <p className="py-6 text-center text-xs text-muted-foreground">
+                  <p className="py-6 text-center text-xs text-text-tertiary">
                     No issues
                   </p>
                 )}

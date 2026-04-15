@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	db "github.com/multica-ai/multica/server/pkg/db/generated"
@@ -308,6 +309,42 @@ func checkPID(processName string) (bool, int) {
 	return true, pid
 }
 
+// checkDockerContainer checks if a Docker container with the given name substring is running.
+func checkDockerContainer(nameSubstr string) (bool, string) {
+	out, err := exec.Command("docker", "ps", "--filter", "name="+nameSubstr, "--format", "{{.Names}}").Output()
+	if err != nil {
+		return false, ""
+	}
+	name := strings.TrimSpace(string(out))
+	return name != "", name
+}
+
+// checkDaemonPID checks if the multica daemon is running via its PID file.
+func checkDaemonPID() (bool, int) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false, 0
+	}
+	data, err := os.ReadFile(filepath.Join(home, ".multica", "daemon.pid"))
+	if err != nil {
+		return false, 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return false, 0
+	}
+	// Check if process is actually running
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return false, 0
+	}
+	// On Unix, FindProcess always succeeds. Send signal 0 to check if alive.
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return false, 0
+	}
+	return true, pid
+}
+
 func getDiskInfo() *DiskInfo {
 	if runtime.GOOS == "darwin" {
 		out, err := exec.Command("df", "-k", "/").Output()
@@ -335,31 +372,113 @@ func getDiskInfo() *DiskInfo {
 	return nil
 }
 
-func (h *Handler) GetObservatoryHealth(w http.ResponseWriter, _ *http.Request) {
-	apiKeyNames := []string{
-		"ANTHROPIC_API_KEY", "OPENAI_API_KEY", "RESEND_API_KEY",
-		"AWS_ACCESS_KEY_ID", "CLOUDFRONT_KEY_PAIR_ID",
+// loadHermesConfigKeys reads ~/.hermes/config.yaml and returns a set of env var
+// names that have non-empty values (either hardcoded or referencing set env vars).
+func loadHermesConfigKeys() map[string]bool {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil
 	}
-	apiKeys := make([]APIKeyStatus, 0, len(apiKeyNames))
-	for _, name := range apiKeyNames {
-		val := os.Getenv(name)
+	data, err := os.ReadFile(filepath.Join(home, ".hermes", "config.yaml"))
+	if err != nil {
+		return nil
+	}
+	// Simple scan: find lines with known env var patterns
+	keys := make(map[string]bool)
+	content := string(data)
+	// Check for hardcoded GitHub token
+	if strings.Contains(content, "ghp_") || strings.Contains(content, "github_pat_") {
+		keys["GITHUB_TOKEN"] = true
+	}
+	// Check for hardcoded or env-referenced Slack token
+	if strings.Contains(content, "xoxb-") {
+		keys["SLACK_BOT_TOKEN"] = true
+	} else if strings.Contains(content, "SLACK_BOT_TOKEN") || strings.Contains(content, "SLACK_MCP_XOXB_TOKEN") {
+		// Referenced via ${...} — check if the env var is actually set
+		if os.Getenv("SLACK_BOT_TOKEN") != "" || os.Getenv("SLACK_MCP_XOXB_TOKEN") != "" {
+			keys["SLACK_BOT_TOKEN"] = true
+		}
+	}
+	// Comet/Perplexity (comet-mcp is configured = API likely works)
+	if strings.Contains(content, "comet-mcp") {
+		keys["PPLX_API_KEY"] = true
+	}
+	// Google workspace
+	if strings.Contains(content, "google-workspace-mcp") {
+		keys["GLM_API_KEY"] = true
+	}
+	return keys
+}
+
+func (h *Handler) GetObservatoryHealth(w http.ResponseWriter, _ *http.Request) {
+	// Check API keys in both env vars AND ~/.hermes/config.yaml
+	hermesKeys := loadHermesConfigKeys()
+
+	type keyCheck struct {
+		name    string
+		aliases []string // alternative env var names to check
+	}
+	checks := []keyCheck{
+		{name: "GITHUB_TOKEN", aliases: []string{"GITHUB_PERSONAL_ACCESS_TOKEN"}},
+		{name: "SLACK_BOT_TOKEN", aliases: []string{"SLACK_MCP_XOXB_TOKEN"}},
+		{name: "PPLX_API_KEY"},
+		{name: "GLM_API_KEY", aliases: []string{"GOOGLE_CLIENT_ID"}},
+	}
+
+	apiKeys := make([]APIKeyStatus, 0, len(checks))
+	for _, check := range checks {
+		present := false
+		source := "not found"
+
+		// Check primary env var
+		if os.Getenv(check.name) != "" {
+			present = true
+			source = "env"
+		}
+		// Check aliases
+		if !present {
+			for _, alias := range check.aliases {
+				if os.Getenv(alias) != "" {
+					present = true
+					source = "env (" + alias + ")"
+					break
+				}
+			}
+		}
+		// Check hermes config
+		if !present && hermesKeys[check.name] {
+			present = true
+			source = "~/.hermes/config.yaml"
+		}
+
 		apiKeys = append(apiKeys, APIKeyStatus{
-			Name:    name,
-			Present: val != "",
-			Source:  "env",
+			Name:    check.name,
+			Present: present,
+			Source:  source,
 		})
 	}
 
-	serviceNames := []string{"hermes", "docker", "postgres", "ollama"}
-	services := make([]ServiceStatus, 0, len(serviceNames))
-	for _, name := range serviceNames {
-		running, pid := checkPID(name)
-		services = append(services, ServiceStatus{
-			Name:    name,
-			Running: running,
-			PID:     pid,
-		})
+	services := make([]ServiceStatus, 0, 3)
+
+	// Docker
+	dockerRunning, _ := checkPID("docker")
+	services = append(services, ServiceStatus{Name: "docker", Running: dockerRunning})
+
+	// PostgreSQL — detect via Docker container, not local process
+	pgRunning, pgName := checkDockerContainer("postgres")
+	pgNote := ""
+	if pgRunning {
+		pgNote = "container: " + pgName
 	}
+	services = append(services, ServiceStatus{Name: "postgres", Running: pgRunning, Note: pgNote})
+
+	// Hermes daemon — detect via multica daemon PID file
+	daemonRunning, daemonPID := checkDaemonPID()
+	daemonNote := ""
+	if daemonRunning {
+		daemonNote = "multica daemon"
+	}
+	services = append(services, ServiceStatus{Name: "hermes", Running: daemonRunning, PID: daemonPID, Note: daemonNote})
 
 	var memStats runtime.MemStats
 	runtime.ReadMemStats(&memStats)

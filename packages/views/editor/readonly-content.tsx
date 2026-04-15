@@ -205,7 +205,7 @@ const components: Partial<Components> = {
       const href = /^https?:\/\//i.test(rawHref) ? rawHref : "";
       const filename = (node?.properties?.dataFilename as string) || "";
       return (
-        <div className="my-1 flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1 transition-colors hover:bg-muted">
+        <div className="my-1 flex items-center gap-2 rounded-md border border-border bg-secondary px-2.5 py-1 transition-colors hover:bg-muted">
           <FileText className="size-4 shrink-0 text-muted-foreground" />
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm">{filename}</p>

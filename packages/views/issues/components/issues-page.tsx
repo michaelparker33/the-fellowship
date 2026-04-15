@@ -17,10 +17,12 @@ import { useWorkspaceId } from "@multica/core/hooks";
 import { issueListOptions, childIssueProgressOptions } from "@multica/core/issues/queries";
 import { useUpdateIssue } from "@multica/core/issues/mutations";
 import { useIssueSelectionStore } from "@multica/core/issues/stores/selection-store";
+import { useIssueKeyboardShortcuts } from "../hooks/use-issue-keyboard-shortcuts";
 import { IssuesHeader } from "./issues-header";
 import { BoardView } from "./board-view";
 import { ListView } from "./list-view";
 import { BatchActionToolbar } from "./batch-action-toolbar";
+import { KeyboardShortcutsHint } from "./keyboard-shortcuts-hint";
 
 export function IssuesPage() {
   const wsId = useWorkspaceId();
@@ -62,6 +64,19 @@ export function IssuesPage() {
   // Fetch sub-issue progress from the backend so counts are accurate
   // regardless of client-side pagination or filtering of done issues.
   const { data: childProgressMap = new Map() } = useQuery(childIssueProgressOptions(wsId));
+
+  // Flat list of issue IDs for keyboard navigation
+  const flatIssueIds = useMemo(() => issues.map((i) => i.id), [issues]);
+  const issueMap = useMemo(() => {
+    const map = new Map<string, typeof issues[number]>();
+    for (const i of issues) map.set(i.id, i);
+    return map;
+  }, [issues]);
+
+  const { setIssueMap } = useIssueKeyboardShortcuts(flatIssueIds);
+  useEffect(() => {
+    setIssueMap(issueMap);
+  }, [issueMap, setIssueMap]);
 
   const visibleStatuses = useMemo(() => {
     if (statusFilters.length > 0)
@@ -125,10 +140,10 @@ export function IssuesPage() {
       {/* Header 1: Workspace breadcrumb */}
       <div className="flex h-12 shrink-0 items-center gap-1.5 border-b px-4">
         <WorkspaceAvatar name={workspace?.name ?? "W"} size="sm" />
-        <span className="text-sm text-muted-foreground">
+        <span className="text-sm text-text-tertiary">
           {workspace?.name ?? "Workspace"}
         </span>
-        <ChevronRight className="h-3 w-3 text-muted-foreground" />
+        <ChevronRight className="h-3 w-3 text-text-tertiary" />
         <span className="text-sm font-medium">Issues</span>
       </div>
 
@@ -138,8 +153,8 @@ export function IssuesPage() {
 
         {/* Content: scrollable */}
         {scopedIssues.length === 0 ? (
-          <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-muted-foreground">
-            <ListTodo className="h-10 w-10 text-muted-foreground/40" />
+          <div className="flex flex-1 min-h-0 flex-col items-center justify-center gap-2 text-text-tertiary">
+            <ListTodo className="h-10 w-10 text-text-tertiary/40" />
             <p className="text-sm">No issues yet</p>
             <p className="text-xs">Create an issue to get started.</p>
           </div>
@@ -160,6 +175,7 @@ export function IssuesPage() {
           </div>
         )}
         {viewMode === "list" && <BatchActionToolbar />}
+        <KeyboardShortcutsHint />
       </ViewStoreProvider>
     </div>
   );

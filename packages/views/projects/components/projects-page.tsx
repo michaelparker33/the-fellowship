@@ -572,7 +572,7 @@ export function ProjectsPage() {
         ) : (
           <>
             {/* Column headers */}
-            <div className="sticky top-0 z-[1] flex h-8 items-center gap-2 border-b bg-muted/30 px-5 text-xs font-medium text-muted-foreground">
+            <div className="sticky top-0 z-[1] flex h-8 items-center gap-2 border-b bg-surface px-5 text-xs font-medium text-muted-foreground">
               {/* Icon spacer + Name */}
               <span className="shrink-0 w-[24px]" />
               <span className="min-w-0 flex-1">Name</span>

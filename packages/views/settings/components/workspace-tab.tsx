@@ -162,7 +162,7 @@ export function WorkspaceTab() {
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Slug</Label>
-              <div className="mt-1 rounded-md border bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
+              <div className="mt-1 rounded-md border bg-secondary px-3 py-2 text-sm text-muted-foreground">
                 {workspace.slug}
               </div>
             </div>

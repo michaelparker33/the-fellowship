@@ -47,6 +47,11 @@ type LoginResponse struct {
 	User  UserResponse `json:"user"`
 }
 
+type DevLoginRequest struct {
+	Email string `json:"email"`
+	Name  string `json:"name"`
+}
+
 type SendCodeRequest struct {
 	Email string `json:"email"`
 }
@@ -95,6 +100,66 @@ func (h *Handler) findOrCreateUser(ctx context.Context, email string) (db.User, 
 		}
 	}
 	return user, nil
+}
+
+// DevLogin bypasses email verification for local development.
+// Only available when APP_ENV != "production".
+func (h *Handler) DevLogin(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("APP_ENV") == "production" {
+		writeError(w, http.StatusNotFound, "not found")
+		return
+	}
+
+	var req DevLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if email == "" {
+		writeError(w, http.StatusBadRequest, "email is required")
+		return
+	}
+
+	user, err := h.findOrCreateUser(r.Context(), email)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to create user")
+		return
+	}
+
+	// If a name was provided and differs from the email-derived default, update it.
+	if req.Name != "" && req.Name != user.Name {
+		if updated, err := h.Queries.UpdateUser(r.Context(), db.UpdateUserParams{
+			ID:        user.ID,
+			Name:      req.Name,
+			AvatarUrl: user.AvatarUrl,
+		}); err == nil {
+			user = updated
+		}
+	}
+
+	tokenString, err := h.issueJWT(user)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "failed to generate token")
+		return
+	}
+
+	if err := auth.SetAuthCookies(w, tokenString); err != nil {
+		slog.Warn("failed to set auth cookies", "error", err)
+	}
+
+	if h.CFSigner != nil {
+		for _, cookie := range h.CFSigner.SignedCookies(time.Now().Add(30 * 24 * time.Hour)) {
+			http.SetCookie(w, cookie)
+		}
+	}
+
+	slog.Info("dev auto-login", "user_id", uuidToString(user.ID), "email", user.Email)
+	writeJSON(w, http.StatusOK, LoginResponse{
+		Token: tokenString,
+		User:  userToResponse(user),
+	})
 }
 
 func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {

@@ -1043,29 +1043,40 @@ func (d *Daemon) runTask(ctx context.Context, task Task, provider string, taskLo
 		ChatSessionID:     task.ChatSessionID,
 	}
 
-	// Try to reuse the workdir from a previous task on the same (agent, issue) pair.
+	// Set up execution environment.
 	var env *execenv.Environment
-	if task.PriorWorkDir != "" {
-		env = execenv.Reuse(task.PriorWorkDir, provider, taskCtx, d.logger)
-	}
-	if env == nil {
+	if d.cfg.AgentWorkDir != "" {
+		// Direct mode: agents run in the configured directory (e.g. the project repo).
 		var err error
-		env, err = execenv.Prepare(execenv.PrepareParams{
-			WorkspacesRoot: d.cfg.WorkspacesRoot,
-			WorkspaceID:    task.WorkspaceID,
-			TaskID:         task.ID,
-			AgentName:      agentName,
-			Provider:       provider,
-			Task:           taskCtx,
-		}, d.logger)
+		env, err = execenv.PrepareDirect(d.cfg.AgentWorkDir, provider, taskCtx, d.logger)
 		if err != nil {
-			return TaskResult{}, fmt.Errorf("prepare execution environment: %w", err)
+			return TaskResult{}, fmt.Errorf("prepare direct execution environment: %w", err)
 		}
-	}
+		// Skip InjectRuntimeConfig — the repo's own CLAUDE.md / AGENTS.md takes precedence.
+	} else {
+		// Isolated mode: each task gets its own directory.
+		if task.PriorWorkDir != "" {
+			env = execenv.Reuse(task.PriorWorkDir, provider, taskCtx, d.logger)
+		}
+		if env == nil {
+			var err error
+			env, err = execenv.Prepare(execenv.PrepareParams{
+				WorkspacesRoot: d.cfg.WorkspacesRoot,
+				WorkspaceID:    task.WorkspaceID,
+				TaskID:         task.ID,
+				AgentName:      agentName,
+				Provider:       provider,
+				Task:           taskCtx,
+			}, d.logger)
+			if err != nil {
+				return TaskResult{}, fmt.Errorf("prepare execution environment: %w", err)
+			}
+		}
 
-	// Inject runtime-specific config (meta skill) so the agent discovers .agent_context/.
-	if err := execenv.InjectRuntimeConfig(env.WorkDir, provider, taskCtx); err != nil {
-		d.logger.Warn("execenv: inject runtime config failed (non-fatal)", "error", err)
+		// Inject runtime-specific config (meta skill) so the agent discovers .agent_context/.
+		if err := execenv.InjectRuntimeConfig(env.WorkDir, provider, taskCtx); err != nil {
+			d.logger.Warn("execenv: inject runtime config failed (non-fatal)", "error", err)
+		}
 	}
 	// NOTE: No cleanup — workdir is preserved for reuse by future tasks on
 	// the same (agent, issue) pair. The work_dir path is stored in DB on

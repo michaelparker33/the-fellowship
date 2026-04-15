@@ -702,11 +702,11 @@ const mockUsageData = USAGE_SEEDS.map((s, i) => ({
 /* Heatmap color helper — same as real ActivityHeatmap */
 function getHeatmapColor(level: number): string {
   const colors = [
-    "var(--color-muted, hsl(var(--muted)))",
-    "hsl(var(--chart-3) / 0.3)",
-    "hsl(var(--chart-3) / 0.5)",
-    "hsl(var(--chart-3) / 0.75)",
-    "hsl(var(--chart-3) / 1)",
+    "var(--color-muted)",
+    "color-mix(in oklch, var(--chart-3), transparent 70%)",
+    "color-mix(in oklch, var(--chart-3), transparent 50%)",
+    "color-mix(in oklch, var(--chart-3), transparent 25%)",
+    "var(--chart-3)",
   ];
   return colors[level] ?? colors[0]!;
 }
@@ -766,7 +766,7 @@ function DailyCostBars({ data }: { data: typeof mockUsageData }) {
             width={8}
             height={Math.max(h, 2)}
             rx={1}
-            fill="hsl(var(--chart-1))"
+            fill="var(--chart-1)"
           />
         );
       })}

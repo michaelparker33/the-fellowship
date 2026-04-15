@@ -46,8 +46,8 @@ function DailySparkline({ stats }: { stats: DailySessionStat[] }) {
             <XAxis dataKey="day" hide />
             <YAxis hide />
             <Tooltip
-              contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: "6px", fontSize: "11px" }}
-              labelStyle={{ color: "hsl(var(--foreground))" }}
+              contentStyle={{ background: "var(--background)", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "11px" }}
+              labelStyle={{ color: "var(--foreground)" }}
               formatter={(v) => [(v as number).toLocaleString(), "tokens"]}
             />
             <Area type="monotone" dataKey="tokens" stroke="#f59e0b" strokeWidth={1.5} fill="url(#tokenGrad)" dot={false} />
@@ -67,8 +67,8 @@ function DailySparkline({ stats }: { stats: DailySessionStat[] }) {
             <XAxis dataKey="day" hide />
             <YAxis hide />
             <Tooltip
-              contentStyle={{ background: "hsl(var(--background))", border: "1px solid hsl(var(--border))", borderRadius: "6px", fontSize: "11px" }}
-              labelStyle={{ color: "hsl(var(--foreground))" }}
+              contentStyle={{ background: "var(--background)", border: "1px solid var(--border)", borderRadius: "6px", fontSize: "11px" }}
+              labelStyle={{ color: "var(--foreground)" }}
               formatter={(v) => [`$${(v as number).toFixed(4)}`, "cost"]}
             />
             <Area type="monotone" dataKey="cost" stroke="#22c55e" strokeWidth={1.5} fill="url(#costGrad)" dot={false} />
@@ -97,7 +97,7 @@ function SessionRow({ session }: { session: SessionEntry }) {
   return (
     <div className="border border-border rounded-lg overflow-hidden">
       <button
-        className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-muted/30 transition-colors"
+        className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-secondary transition-colors"
         onClick={() => setExpanded((v) => !v)}
       >
         <span className={`text-xs font-medium mt-0.5 shrink-0 ${statusColor}`}>●</span>
@@ -118,7 +118,7 @@ function SessionRow({ session }: { session: SessionEntry }) {
       </button>
 
       {expanded && (
-        <div className="px-4 pb-3 pt-1 border-t border-border bg-muted/10">
+        <div className="px-4 pb-3 pt-1 border-t border-border bg-surface">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
             <div>
               <div className="text-muted-foreground mb-0.5">Input tokens</div>
@@ -154,7 +154,7 @@ export function SessionsTab({ data, isLoading }: SessionsTabProps) {
     return (
       <div className="p-6 space-y-3">
         {[1, 2, 3].map((i) => (
-          <div key={i} className="border border-border rounded-lg h-16 animate-pulse bg-muted/20" />
+          <div key={i} className="border border-border rounded-lg h-16 animate-pulse bg-secondary" />
         ))}
       </div>
     );

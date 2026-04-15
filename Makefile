@@ -173,6 +173,32 @@ check-worktree:
 dev:
 	@bash scripts/dev.sh
 
+# Background service (start/stop/status/restart)
+service-start:
+	@bash scripts/fellowship-service.sh start
+
+service-stop:
+	@bash scripts/fellowship-service.sh stop
+
+service-status:
+	@bash scripts/fellowship-service.sh status
+
+service-restart:
+	@bash scripts/fellowship-service.sh restart
+
+# Install macOS auto-start (LaunchAgent)
+install-autostart:
+	@bash scripts/install-launchd.sh install
+
+uninstall-autostart:
+	@bash scripts/install-launchd.sh uninstall
+
+# Build desktop app (.app bundle)
+desktop-build:
+	pnpm --filter @multica/desktop build
+	pnpm --filter @multica/desktop package
+	@echo "✓ Desktop app built. Check apps/desktop/dist/"
+
 # Go server only
 server:
 	$(REQUIRE_ENV)

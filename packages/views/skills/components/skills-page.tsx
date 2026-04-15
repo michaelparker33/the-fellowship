@@ -160,7 +160,7 @@ function CreateSkillDialog({
               <div className="grid grid-cols-2 gap-2">
                 <div className={`rounded-lg border px-3 py-2.5 transition-colors ${
                   detectedSource === "clawhub"
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-brand/10"
                     : ""
                 }`}>
                   <div className="text-xs font-medium">ClawHub</div>
@@ -170,7 +170,7 @@ function CreateSkillDialog({
                 </div>
                 <div className={`rounded-lg border px-3 py-2.5 transition-colors ${
                   detectedSource === "skills.sh"
-                    ? "border-primary bg-primary/5"
+                    ? "border-primary bg-brand/10"
                     : ""
                 }`}>
                   <div className="text-xs font-medium">Skills.sh</div>

@@ -41,7 +41,10 @@ export function WebProviders({ children }: { children: React.ReactNode }) {
       cookieAuth={cookieAuth}
       onLogin={setLoggedInCookie}
       onLogout={clearLoggedInCookie}
-      autoLogin={process.env.NEXT_PUBLIC_LOCAL_AUTO_LOGIN === "true"}
+      autoLogin={
+        process.env.NEXT_PUBLIC_LOCAL_AUTO_LOGIN === "true" ||
+        (typeof window !== "undefined" && window.location.hostname === "localhost")
+      }
     >
       <WebNavigationProvider>{children}</WebNavigationProvider>
     </CoreProvider>

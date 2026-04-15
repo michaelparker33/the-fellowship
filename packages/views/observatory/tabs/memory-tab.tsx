@@ -71,7 +71,7 @@ export function MemoryTab({ data, isLoading }: MemoryTabProps) {
     return (
       <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
         {[1, 2].map((i) => (
-          <div key={i} className="border border-border rounded-lg h-48 animate-pulse bg-muted/20" />
+          <div key={i} className="border border-border rounded-lg h-48 animate-pulse bg-secondary" />
         ))}
       </div>
     );

@@ -63,6 +63,7 @@ type Environment struct {
 	CodexHome string
 
 	logger *slog.Logger // for cleanup logging
+	direct bool         // true when using a direct workdir (no cleanup of the directory itself)
 }
 
 // Prepare creates an isolated execution environment for a task.
@@ -122,6 +123,54 @@ func Prepare(params PrepareParams, logger *slog.Logger) (*Environment, error) {
 	}
 
 	logger.Info("execenv: prepared env", "root", envRoot, "repos_available", len(params.Task.Repos))
+	return env, nil
+}
+
+// PrepareDirect creates an execution environment that runs in the given directory
+// (typically a repo checkout) instead of an isolated workspace. Context files
+// (.agent_context/) are written into the directory but runtime config (CLAUDE.md,
+// AGENTS.md) is skipped — the repo's own config takes precedence.
+func PrepareDirect(workDir, provider string, task TaskContextForEnv, logger *slog.Logger) (*Environment, error) {
+	info, err := os.Stat(workDir)
+	if err != nil {
+		return nil, fmt.Errorf("execenv: direct workdir does not exist: %w", err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("execenv: direct workdir is not a directory: %s", workDir)
+	}
+
+	env := &Environment{
+		RootDir: workDir,
+		WorkDir: workDir,
+		logger:  logger,
+		direct:  true,
+	}
+
+	// Write agent context files (issue context, skills) into the workdir.
+	if err := writeContextFiles(workDir, provider, task); err != nil {
+		return nil, fmt.Errorf("execenv: write context files: %w", err)
+	}
+
+	// In direct mode, inject runtime config as a skill file so it doesn't
+	// overwrite the repo's CLAUDE.md / AGENTS.md.
+	if err := InjectRuntimeConfigAsContext(workDir, provider, task); err != nil {
+		logger.Warn("execenv: inject runtime context failed (non-fatal)", "error", err)
+	}
+
+	// For Codex, set up a per-task CODEX_HOME in a temp dir so we don't pollute the repo.
+	if provider == "codex" && len(task.AgentSkills) > 0 {
+		codexHome := filepath.Join(os.TempDir(), "multica-codex-"+shortID(task.IssueID))
+		if err := prepareCodexHome(codexHome, logger); err != nil {
+			logger.Warn("execenv: prepare codex-home failed (non-fatal)", "error", err)
+		} else {
+			if err := writeSkillFiles(filepath.Join(codexHome, "skills"), task.AgentSkills); err != nil {
+				logger.Warn("execenv: write codex skills failed (non-fatal)", "error", err)
+			}
+			env.CodexHome = codexHome
+		}
+	}
+
+	logger.Info("execenv: using direct workdir", "workdir", workDir)
 	return env, nil
 }
 
@@ -202,8 +251,18 @@ func ReadGCMeta(envRoot string) (*GCMeta, error) {
 // Cleanup tears down the execution environment.
 // If removeAll is true, the entire env root is deleted. Otherwise, workdir is
 // removed but output/ and logs/ are preserved for debugging.
+// For direct workdirs, only the .agent_context/ directory is cleaned up.
 func (env *Environment) Cleanup(removeAll bool) error {
 	if env == nil {
+		return nil
+	}
+
+	// Direct workdir: only clean up injected context files, never the workdir itself.
+	if env.direct {
+		ctxDir := filepath.Join(env.WorkDir, ".agent_context")
+		if err := os.RemoveAll(ctxDir); err != nil {
+			env.logger.Warn("execenv: cleanup .agent_context failed", "error", err)
+		}
 		return nil
 	}
 

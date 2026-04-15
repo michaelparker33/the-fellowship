@@ -65,6 +65,29 @@ export function AuthInitializer({
           useWorkspaceStore.getState().hydrateWorkspace(wsList, wsId);
         })
         .catch((err) => {
+          // If cookie auth failed and autoLogin is enabled, try dev-login
+          // before falling through to the login page.
+          if (autoLogin && isUnauthorizedError(err)) {
+            logger.info("cookie expired, attempting dev auto-login");
+            api
+              .devLogin("michaelparker@ciwebgroup.com", "Michael Parker")
+              .then(({ user }) => {
+                // dev-login sets HttpOnly cookies on the response, so
+                // subsequent requests will be authenticated automatically.
+                return api.listWorkspaces().then((wsList) => {
+                  onLogin?.();
+                  useAuthStore.setState({ user, isLoading: false });
+                  qc.setQueryData(workspaceKeys.list(), wsList);
+                  useWorkspaceStore.getState().hydrateWorkspace(wsList, wsId);
+                });
+              })
+              .catch((devErr) => {
+                logger.error("dev auto-login failed", devErr);
+                onLogout?.();
+                useAuthStore.setState({ user: null, isLoading: false });
+              });
+            return;
+          }
           logger.error("cookie auth init failed", err);
           onLogout?.();
           useAuthStore.setState({ user: null, isLoading: false });

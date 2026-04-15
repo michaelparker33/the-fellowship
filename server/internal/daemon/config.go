@@ -36,6 +36,7 @@ type Config struct {
 	Profile            string                // profile name (empty = default)
 	Agents             map[string]AgentEntry // keyed by provider: claude, codex, opencode, openclaw, hermes, gemini
 	WorkspacesRoot     string                // base path for execution envs (default: ~/multica_workspaces)
+	AgentWorkDir       string                // if set, agents run in this directory instead of isolated envs
 	KeepEnvAfterTask   bool                  // preserve env after task for debugging
 	HealthPort         int                   // local HTTP port for health checks (default: 19514)
 	MaxConcurrentTasks int                   // max tasks running in parallel (default: 20)
@@ -60,6 +61,7 @@ type Overrides struct {
 	DaemonID           string
 	DeviceName         string
 	RuntimeName        string
+	AgentWorkDir       string // if set, agents use this directory directly
 	Profile            string // profile name (empty = default)
 	HealthPort         int    // health check port (0 = use default)
 }
@@ -214,6 +216,18 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		healthPort = overrides.HealthPort
 	}
 
+	// Agent workdir: override > env > empty (empty = use isolated envs)
+	agentWorkDir := strings.TrimSpace(os.Getenv("MULTICA_AGENT_WORKDIR"))
+	if overrides.AgentWorkDir != "" {
+		agentWorkDir = overrides.AgentWorkDir
+	}
+	if agentWorkDir != "" {
+		agentWorkDir, err = filepath.Abs(agentWorkDir)
+		if err != nil {
+			return Config{}, fmt.Errorf("resolve absolute agent workdir: %w", err)
+		}
+	}
+
 	// Keep env after task: env > default (false)
 	keepEnv := os.Getenv("MULTICA_KEEP_ENV_AFTER_TASK") == "true" || os.Getenv("MULTICA_KEEP_ENV_AFTER_TASK") == "1"
 
@@ -243,6 +257,7 @@ func LoadConfig(overrides Overrides) (Config, error) {
 		Profile:            profile,
 		Agents:             agents,
 		WorkspacesRoot:     workspacesRoot,
+		AgentWorkDir:       agentWorkDir,
 		KeepEnvAfterTask:   keepEnv,
 		GCEnabled:          gcEnabled,
 		GCInterval:         gcInterval,

@@ -108,7 +108,7 @@ function ReplyInput({
             />
           </div>
         </div>
-        <div className="absolute bottom-0 right-0 flex items-center gap-1 text-muted-foreground transition-colors group-focus-within/editor:text-foreground">
+        <div className="absolute bottom-0 right-0 flex items-center gap-1 text-text-tertiary transition-colors group-focus-within/editor:text-foreground">
           <FileUploadButton
             size="sm"
             onSelect={(file) => editorRef.current?.uploadFile(file)}
@@ -117,7 +117,7 @@ function ReplyInput({
             type="button"
             disabled={isEmpty || submitting}
             onClick={handleSubmit}
-            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-muted-foreground hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            className="inline-flex h-6 w-6 items-center justify-center rounded-full text-text-tertiary hover:bg-accent hover:text-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
           >
             {submitting ? (
               <Loader2 className="h-3.5 w-3.5 animate-spin" />

@@ -59,17 +59,17 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
   const setDraft = useIssueDraftStore((s) => s.setDraft);
   const clearDraft = useIssueDraftStore((s) => s.clearDraft);
 
-  const [title, setTitle] = useState(draft.title);
+  const [title, setTitle] = useState((data?.title as string) || draft.title);
   const descEditorRef = useRef<ContentEditorRef>(null);
   const { isDragOver: descDragOver, dropZoneProps: descDropZoneProps } = useFileDropZone({
     onDrop: (files) => files.forEach((f) => descEditorRef.current?.uploadFile(f)),
   });
   const [status, setStatus] = useState<IssueStatus>((data?.status as IssueStatus) || draft.status);
-  const [priority, setPriority] = useState<IssuePriority>(draft.priority);
+  const [priority, setPriority] = useState<IssuePriority>((data?.priority as IssuePriority) || draft.priority);
   const [submitting, setSubmitting] = useState(false);
-  const [assigneeType, setAssigneeType] = useState<IssueAssigneeType | undefined>(draft.assigneeType);
-  const [assigneeId, setAssigneeId] = useState<string | undefined>(draft.assigneeId);
-  const [dueDate, setDueDate] = useState<string | null>(draft.dueDate);
+  const [assigneeType, setAssigneeType] = useState<IssueAssigneeType | undefined>((data?.assignee_type as IssueAssigneeType) || draft.assigneeType);
+  const [assigneeId, setAssigneeId] = useState<string | undefined>((data?.assignee_id as string) || draft.assigneeId);
+  const [dueDate, setDueDate] = useState<string | null>((data?.due_date as string) || draft.dueDate);
   const [projectId, setProjectId] = useState<string | undefined>(
     (data?.project_id as string) || undefined,
   );
@@ -209,7 +209,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
         <div className="px-5 pb-2 shrink-0">
           <TitleEditor
             autoFocus
-            defaultValue={draft.title}
+            defaultValue={(data?.title as string) || draft.title}
             placeholder="Issue title"
             className="text-lg font-semibold"
             onChange={(v) => updateTitle(v)}
@@ -221,7 +221,7 @@ export function CreateIssueModal({ onClose, data }: { onClose: () => void; data?
         <div {...descDropZoneProps} className="relative flex-1 min-h-0 overflow-y-auto px-5">
           <ContentEditor
             ref={descEditorRef}
-            defaultValue={draft.description}
+            defaultValue={(data?.description as string) || draft.description}
             placeholder="Add description..."
             onUpdate={(md) => setDraft({ description: md })}
             onUploadFile={handleUpload}

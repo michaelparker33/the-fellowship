@@ -123,7 +123,7 @@ export function UsageSection({ runtimeId }: { runtimeId: string }) {
       </div>
 
       {totals.cost > 0 && (
-        <div className="rounded-lg border bg-muted/30 px-3 py-2">
+        <div className="rounded-lg border bg-card px-3 py-2">
           <span className="text-xs text-muted-foreground">
             Estimated cost ({days}d):{" "}
           </span>

@@ -74,7 +74,7 @@ export function AgentDetail({
     <div className="flex h-full flex-col">
       {/* Archive Banner */}
       {isArchived && (
-        <div className="flex items-center gap-2 bg-muted/50 px-4 py-2 text-xs text-muted-foreground border-b">
+        <div className="flex items-center gap-2 bg-secondary px-4 py-2 text-xs text-muted-foreground border-b">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" />
           <span className="flex-1">This agent is archived. It cannot be assigned or mentioned.</span>
           <Button variant="outline" size="sm" className="h-6 text-xs" onClick={() => onRestore(agent.id)}>

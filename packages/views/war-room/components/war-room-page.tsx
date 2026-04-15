@@ -517,7 +517,7 @@ function EisenhowerMiniGrid({ wsId }: { wsId: string }) {
   return (
     <div className="grid grid-cols-2 gap-3">
       {cells.map((c) => (
-        <div key={c.label} className="text-center rounded-lg border border-border bg-muted/30 py-3">
+        <div key={c.label} className="text-center rounded-lg border border-border bg-card py-3">
           <span className={`text-2xl font-bold font-mono ${c.color}`}>{c.count}</span>
           <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mt-0.5">
             {c.label}
@@ -653,7 +653,7 @@ export function WarRoomPage() {
                   {pendingApprovals.map((a: any) => (
                     <div
                       key={a.id}
-                      className="flex items-center justify-between rounded-lg border border-border bg-muted/30 px-4 py-3"
+                      className="flex items-center justify-between rounded-lg border border-border bg-card px-4 py-3"
                     >
                       <div className="flex items-center gap-3">
                         <span className="font-mono text-sm text-muted-foreground">{a.action_type}</span>

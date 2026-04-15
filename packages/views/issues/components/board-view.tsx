@@ -332,7 +332,7 @@ function HiddenColumnsPanel({
   return (
     <div className="flex w-[240px] shrink-0 flex-col">
       <div className="mb-2 flex items-center gap-2 px-1">
-        <span className="text-sm font-medium text-muted-foreground">
+        <span className="text-sm font-medium text-text-tertiary">
           Hidden columns
         </span>
       </div>
@@ -343,21 +343,21 @@ function HiddenColumnsPanel({
           return (
             <div
               key={status}
-              className="flex items-center justify-between rounded-lg px-2.5 py-2 hover:bg-muted/50"
+              className="flex items-center justify-between rounded-lg px-2.5 py-2 hover:bg-secondary"
             >
               <div className="flex items-center gap-2">
                 <StatusIcon status={status} className="h-3.5 w-3.5" />
                 <span className="text-sm">{cfg.label}</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <span className="text-xs text-muted-foreground">{count}</span>
+                <span className="text-xs text-text-tertiary">{count}</span>
                 <DropdownMenu>
                   <DropdownMenuTrigger
                     render={
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        className="rounded-full text-muted-foreground"
+                        className="rounded-full text-text-tertiary"
                       >
                         <MoreHorizontal className="size-3.5" />
                       </Button>

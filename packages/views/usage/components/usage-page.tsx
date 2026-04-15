@@ -188,22 +188,22 @@ export function UsagePage() {
           <CardContent>
             <ResponsiveContainer width="100%" height={250}>
               <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis
                   dataKey="date"
                   tick={{ fontSize: 12 }}
-                  stroke="hsl(var(--muted-foreground))"
+                  stroke="var(--muted-foreground)"
                 />
                 <YAxis
                   tick={{ fontSize: 12 }}
-                  stroke="hsl(var(--muted-foreground))"
+                  stroke="var(--muted-foreground)"
                   tickFormatter={(v) => `$${v.toFixed(2)}`}
                 />
                 <Tooltip
                   formatter={(value) => [`$${Number(value).toFixed(4)}`, "Cost"]}
                   contentStyle={{
-                    backgroundColor: "hsl(var(--card))",
-                    border: "1px solid hsl(var(--border))",
+                    backgroundColor: "var(--card)",
+                    border: "1px solid var(--border)",
                     borderRadius: "8px",
                   }}
                 />

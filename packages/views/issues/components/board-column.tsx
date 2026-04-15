@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
-import { EyeOff, MoreHorizontal, Plus } from "lucide-react";
+import { useMemo, useCallback, type ReactNode } from "react";
+import { ChevronsLeft, EyeOff, MoreHorizontal, Plus } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@multica/ui/components/ui/tooltip";
 import { useDroppable } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -15,7 +15,7 @@ import {
 } from "@multica/ui/components/ui/dropdown-menu";
 import { STATUS_CONFIG } from "@multica/core/issues/config";
 import { useModalStore } from "@multica/core/modals";
-import { useViewStoreApi } from "@multica/core/issues/stores/view-store-context";
+import { useViewStoreApi, useViewStore } from "@multica/core/issues/stores/view-store-context";
 import { StatusIcon } from "./status-icon";
 import { DraggableBoardCard } from "./board-card";
 import type { ChildProgress } from "./list-row";
@@ -38,6 +38,11 @@ export function BoardColumn({
   const cfg = STATUS_CONFIG[status];
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const viewStoreApi = useViewStoreApi();
+  const isCollapsed = useViewStore((s) => s.boardCollapsedStatuses.includes(status));
+
+  const toggleCollapsed = useCallback(() => {
+    viewStoreApi.getState().toggleBoardCollapsed(status);
+  }, [viewStoreApi, status]);
 
   // Resolve IDs to Issue objects, preserving parent-provided order
   const resolvedIssues = useMemo(
@@ -49,8 +54,30 @@ export function BoardColumn({
     [issueIds, issueMap],
   );
 
+  const count = totalCount ?? issueIds.length;
+
+  // ── Collapsed column: thin vertical strip ──
+  if (isCollapsed) {
+    return (
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        className={`group flex w-9 shrink-0 flex-col items-center rounded-xl ${cfg.columnBg} py-3 transition-all duration-[400ms] ease-[cubic-bezier(0.32,0.72,0,1)] hover:bg-secondary cursor-pointer`}
+      >
+        {/* Count */}
+        <span className="text-[11px] text-text-tertiary tabular-nums font-medium">{count}</span>
+
+        {/* Vertical label using writing-mode for proper layout flow */}
+        <div className="mt-3 flex items-center gap-1.5 [writing-mode:vertical-lr] [text-orientation:mixed]">
+          <StatusIcon status={status} className="h-3 w-3 shrink-0" />
+          <span className="text-xs font-medium text-text-secondary tracking-wide">{cfg.label}</span>
+        </div>
+      </button>
+    );
+  }
+
   return (
-    <div className={`flex w-[280px] shrink-0 flex-col rounded-xl ${cfg.columnBg} p-2`}>
+    <div className={`flex w-[280px] shrink-0 flex-col rounded-xl ${cfg.columnBg} p-2 transition-all duration-[400ms] ease-[cubic-bezier(0.32,0.72,0,1)]`}>
       <div className="mb-2 flex items-center justify-between px-1.5">
         {/* Left: status badge + count */}
         <div className="flex items-center gap-2">
@@ -58,17 +85,32 @@ export function BoardColumn({
             <StatusIcon status={status} className="h-3 w-3" inheritColor />
             {cfg.label}
           </span>
-          <span className="text-xs text-muted-foreground">
-            {totalCount ?? issueIds.length}
+          <span className="text-xs text-text-tertiary">
+            {count}
           </span>
         </div>
 
-        {/* Right: add + menu */}
+        {/* Right: collapse + add + menu */}
         <div className="flex items-center gap-1">
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="rounded-full text-text-tertiary"
+                  onClick={toggleCollapsed}
+                >
+                  <ChevronsLeft className="size-3.5" />
+                </Button>
+              }
+            />
+            <TooltipContent>Collapse column</TooltipContent>
+          </Tooltip>
           <DropdownMenu>
             <DropdownMenuTrigger
               render={
-                <Button variant="ghost" size="icon-sm" className="rounded-full text-muted-foreground">
+                <Button variant="ghost" size="icon-sm" className="rounded-full text-text-tertiary">
                   <MoreHorizontal className="size-3.5" />
                 </Button>
               }
@@ -86,7 +128,7 @@ export function BoardColumn({
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  className="rounded-full text-muted-foreground"
+                  className="rounded-full text-text-tertiary"
                   onClick={() => useModalStore.getState().open("create-issue", { status })}
                 >
                   <Plus className="size-3.5" />
@@ -99,7 +141,7 @@ export function BoardColumn({
       </div>
       <div
         ref={setNodeRef}
-        className={`min-h-[200px] flex-1 space-y-2 overflow-y-auto rounded-lg p-1 transition-colors ${
+        className={`min-h-[200px] flex-1 space-y-2 overflow-y-auto rounded-lg p-1 transition-colors duration-[300ms] ease-[cubic-bezier(0.32,0.72,0,1)] ${
           isOver ? "bg-accent/60" : ""
         }`}
       >
@@ -109,7 +151,7 @@ export function BoardColumn({
           ))}
         </SortableContext>
         {issueIds.length === 0 && (
-          <p className="py-8 text-center text-xs text-muted-foreground">
+          <p className="py-8 text-center text-xs text-text-tertiary">
             No issues
           </p>
         )}

@@ -36,13 +36,13 @@ export function DueDatePicker({
       >
         {customTrigger ?? (
           <>
-            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+            <CalendarDays className="h-3.5 w-3.5 text-text-tertiary" />
             {date ? (
               <span className={isOverdue ? "text-destructive" : ""}>
                 {date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
               </span>
             ) : (
-              <span className="text-muted-foreground">Due date</span>
+              <span className="text-text-tertiary">Due date</span>
             )}
           </>
         )}
@@ -65,7 +65,7 @@ export function DueDatePicker({
                 onUpdate({ due_date: null });
                 setOpen(false);
               }}
-              className="text-muted-foreground hover:text-foreground"
+              className="text-text-tertiary hover:text-foreground"
             >
               Clear date
             </Button>

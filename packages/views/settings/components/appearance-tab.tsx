@@ -4,19 +4,19 @@ import { useTheme } from "@multica/ui/components/common/theme-provider";
 import { cn } from "@multica/ui/lib/utils";
 
 const LIGHT_COLORS = {
-  titleBar: "#e8e8e8",
-  content: "#ffffff",
-  sidebar: "#f4f4f5",
-  bar: "#e4e4e7",
-  barMuted: "#d4d4d8",
+  titleBar: "#F7F7F8",
+  content: "#FFFFFF",
+  sidebar: "#F4F4F5",
+  bar: "#DEE0E1",
+  barMuted: "#CCCCCC",
 };
 
 const DARK_COLORS = {
-  titleBar: "#333338",
-  content: "#27272a",
-  sidebar: "#1e1e21",
-  bar: "#3f3f46",
-  barMuted: "#52525b",
+  titleBar: "#0E0E0E",
+  content: "#1A1A1A",
+  sidebar: "#0E0E0E",
+  bar: "#444444",
+  barMuted: "#555555",
 };
 
 function WindowMockup({

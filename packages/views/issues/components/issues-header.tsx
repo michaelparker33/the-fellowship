@@ -192,7 +192,7 @@ function ActorSubContent({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter..."
-          className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
+          className="w-full bg-transparent text-sm placeholder:text-text-tertiary outline-none"
           autoFocus
         />
       </div>
@@ -206,10 +206,10 @@ function ActorSubContent({
               className={FILTER_ITEM_CLASS}
             >
               <HoverCheck checked={includeNoAssignee ?? false} />
-              <UserMinus className="size-3.5 text-muted-foreground" />
+              <UserMinus className="size-3.5 text-text-tertiary" />
               No assignee
               {(noAssigneeCount ?? 0) > 0 && (
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="ml-auto text-xs text-text-tertiary">
                   {noAssigneeCount}
                 </span>
               )}
@@ -235,7 +235,7 @@ function ActorSubContent({
                   <ActorAvatar actorType="member" actorId={m.user_id} size={18} />
                   <span className="truncate">{m.name}</span>
                   {count > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto text-xs text-text-tertiary">
                       {count}
                     </span>
                   )}
@@ -264,7 +264,7 @@ function ActorSubContent({
                   <ActorAvatar actorType="agent" actorId={a.id} size={18} />
                   <span className="truncate">{a.name}</span>
                   {count > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground">
+                    <span className="ml-auto text-xs text-text-tertiary">
                       {count}
                     </span>
                   )}
@@ -275,7 +275,7 @@ function ActorSubContent({
         )}
 
         {filteredMembers.length === 0 && filteredAgents.length === 0 && search && (
-          <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+          <div className="px-2 py-3 text-center text-sm text-text-tertiary">
             No results
           </div>
         )}
@@ -319,7 +319,7 @@ function ProjectSubContent({
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter..."
-          className="w-full bg-transparent text-sm placeholder:text-muted-foreground outline-none"
+          className="w-full bg-transparent text-sm placeholder:text-text-tertiary outline-none"
           autoFocus
         />
       </div>
@@ -332,10 +332,10 @@ function ProjectSubContent({
             className={FILTER_ITEM_CLASS}
           >
             <HoverCheck checked={includeNoProject} />
-            <FolderMinus className="size-3.5 text-muted-foreground" />
+            <FolderMinus className="size-3.5 text-text-tertiary" />
             No project
             {noProjectCount > 0 && (
-              <span className="ml-auto text-xs text-muted-foreground">
+              <span className="ml-auto text-xs text-text-tertiary">
                 {noProjectCount}
               </span>
             )}
@@ -354,11 +354,11 @@ function ProjectSubContent({
             >
               <HoverCheck checked={checked} />
               <span className="size-3.5 flex items-center justify-center shrink-0">
-                {p.icon || <FolderKanban className="size-3.5 text-muted-foreground" />}
+                {p.icon || <FolderKanban className="size-3.5 text-text-tertiary" />}
               </span>
               <span className="truncate">{p.title}</span>
               {count > 0 && (
-                <span className="ml-auto text-xs text-muted-foreground">
+                <span className="ml-auto text-xs text-text-tertiary">
                   {count}
                 </span>
               )}
@@ -367,7 +367,7 @@ function ProjectSubContent({
         })}
 
         {filtered.length === 0 && search && (
-          <div className="px-2 py-3 text-center text-sm text-muted-foreground">
+          <div className="px-2 py-3 text-center text-sm text-text-tertiary">
             No results
           </div>
         )}
@@ -427,7 +427,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
                   className={
                     scope === s.value
                       ? "bg-accent text-accent-foreground hover:bg-accent/80"
-                      : "text-muted-foreground"
+                      : "text-text-tertiary"
                   }
                   onClick={() => setScope(s.value)}
                 >
@@ -449,7 +449,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
               render={
                 <TooltipTrigger
                   render={
-                    <Button variant="outline" size="icon-sm" className="relative text-muted-foreground">
+                    <Button variant="outline" size="icon-sm" className="relative text-text-tertiary">
                       <Filter className="size-4" />
                       {hasActiveFilters && (
                         <span className="absolute top-0 right-0 size-1.5 rounded-full bg-brand" />
@@ -488,7 +488,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
                       <StatusIcon status={s} className="h-3.5 w-3.5" />
                       {STATUS_CONFIG[s].label}
                       {count > 0 && (
-                        <span className="ml-auto text-xs text-muted-foreground">
+                        <span className="ml-auto text-xs text-text-tertiary">
                           {count} {count === 1 ? "issue" : "issues"}
                         </span>
                       )}
@@ -524,7 +524,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
                       <PriorityIcon priority={p} />
                       {PRIORITY_CONFIG[p].label}
                       {count > 0 && (
-                        <span className="ml-auto text-xs text-muted-foreground">
+                        <span className="ml-auto text-xs text-text-tertiary">
                           {count} {count === 1 ? "issue" : "issues"}
                         </span>
                       )}
@@ -620,7 +620,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
               render={
                 <TooltipTrigger
                   render={
-                    <Button variant="outline" size="icon-sm" className="text-muted-foreground">
+                    <Button variant="outline" size="icon-sm" className="text-text-tertiary">
                       <SlidersHorizontal className="size-4" />
                     </Button>
                   }
@@ -631,7 +631,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
           </Tooltip>
           <PopoverContent align="end" className="w-64 p-0">
             <div className="border-b px-3 py-2.5">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-text-tertiary">
                 Ordering
               </span>
               <div className="mt-2 flex items-center gap-1.5">
@@ -644,7 +644,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
                         className="flex-1 justify-between text-xs"
                       >
                         {sortLabel}
-                        <ChevronDown className="size-3 text-muted-foreground" />
+                        <ChevronDown className="size-3 text-text-tertiary" />
                       </Button>
                     }
                   />
@@ -677,7 +677,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
             </div>
 
             <div className="px-3 py-2.5">
-              <span className="text-xs font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-text-tertiary">
                 Card properties
               </span>
               <div className="mt-2 space-y-2">
@@ -706,7 +706,7 @@ export function IssuesHeader({ scopedIssues }: { scopedIssues: Issue[] }) {
               render={
                 <TooltipTrigger
                   render={
-                    <Button variant="outline" size="icon-sm" className="text-muted-foreground">
+                    <Button variant="outline" size="icon-sm" className="text-text-tertiary">
                       {viewMode === "board" ? (
                         <Columns3 className="size-4" />
                       ) : (

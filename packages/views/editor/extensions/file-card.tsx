@@ -59,7 +59,7 @@ function FileCardView({ node }: NodeViewProps) {
   return (
     <NodeViewWrapper as="div" className="file-card-node" data-type="fileCard">
       <div
-        className="my-1 flex items-center gap-2 rounded-md border border-border bg-muted/50 px-2.5 py-1 transition-colors hover:bg-muted"
+        className="my-1 flex items-center gap-2 rounded-md border border-border bg-secondary px-2.5 py-1 transition-colors hover:bg-muted"
         contentEditable={false}
         onMouseDown={(e) => e.stopPropagation()}
       >

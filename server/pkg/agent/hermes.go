@@ -148,6 +148,8 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 			cwd = "."
 		}
 
+		mcpServers := loadHermesMCPServers(b.cfg.Logger)
+
 		if opts.ResumeSessionID != "" {
 			result, err := c.request(runCtx, "session/resume", map[string]any{
 				"cwd":       cwd,
@@ -162,7 +164,6 @@ func (b *hermesBackend) Execute(ctx context.Context, prompt string, opts ExecOpt
 			sessionID = opts.ResumeSessionID
 			_ = result
 		} else {
-			mcpServers := loadHermesMCPServers(b.cfg.Logger)
 			result, err := c.request(runCtx, "session/new", map[string]any{
 				"cwd":        cwd,
 				"mcpServers": mcpServers,
@@ -578,12 +579,19 @@ func (c *hermesClient) handleUsageUpdate(data json.RawMessage) {
 
 // ── MCP config loading ──
 
+// hermesEnvVariable represents a single environment variable for the ACP McpServerStdio schema.
+// The ACP protocol expects env as an array of {name, value} objects, not a flat map.
+type hermesEnvVariable struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
 // hermesMCPServer is a single MCP server entry for the ACP session/new call.
 type hermesMCPServer struct {
-	Name    string            `json:"name"`
-	Command string            `json:"command"`
-	Args    []string          `json:"args,omitempty"`
-	Env     map[string]string `json:"env,omitempty"`
+	Name    string              `json:"name"`
+	Command string              `json:"command"`
+	Args    []string            `json:"args"`
+	Env     []hermesEnvVariable `json:"env"`
 }
 
 // hermesConfigFile represents the top-level ~/.hermes/config.yaml structure.
@@ -621,12 +629,20 @@ func loadHermesMCPServers(logger interface{ Info(string, ...any) }) []hermesMCPS
 			Name:    name,
 			Command: s.Command,
 			Args:    s.Args,
+			Env:     make([]hermesEnvVariable, 0),
 		}
-		// Expand env var references (e.g. ${SLACK_BOT_TOKEN}) in env values.
+		if entry.Args == nil {
+			entry.Args = []string{}
+		}
+		// Convert env map to ACP-format array of {name, value} objects.
+		// Expand env var references (e.g. ${SLACK_BOT_TOKEN}) in values.
 		if len(s.Env) > 0 {
-			entry.Env = make(map[string]string, len(s.Env))
+			entry.Env = make([]hermesEnvVariable, 0, len(s.Env))
 			for k, v := range s.Env {
-				entry.Env[k] = os.ExpandEnv(v)
+				entry.Env = append(entry.Env, hermesEnvVariable{
+					Name:  k,
+					Value: os.ExpandEnv(v),
+				})
 			}
 		}
 		servers = append(servers, entry)

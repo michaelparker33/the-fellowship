@@ -31,6 +31,35 @@ func InjectRuntimeConfig(workDir, provider string, ctx TaskContextForEnv) error 
 	}
 }
 
+// InjectRuntimeConfigAsContext writes the runtime config into the .agent_context/
+// directory as runtime.md instead of overwriting the repo's CLAUDE.md / AGENTS.md.
+// For Claude, it also creates a skill entry so the agent discovers it natively.
+func InjectRuntimeConfigAsContext(workDir, provider string, ctx TaskContextForEnv) error {
+	content := buildMetaSkillContent(provider, ctx)
+
+	// Write to .agent_context/runtime.md for all providers.
+	ctxDir := filepath.Join(workDir, ".agent_context")
+	if err := os.MkdirAll(ctxDir, 0o755); err != nil {
+		return fmt.Errorf("create .agent_context dir: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(ctxDir, "runtime.md"), []byte(content), 0o644); err != nil {
+		return fmt.Errorf("write runtime.md: %w", err)
+	}
+
+	// For Claude, also write as a skill so it's auto-discovered.
+	if provider == "claude" {
+		skillDir := filepath.Join(workDir, ".claude", "skills", "multica-runtime")
+		if err := os.MkdirAll(skillDir, 0o755); err != nil {
+			return fmt.Errorf("create multica-runtime skill dir: %w", err)
+		}
+		if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0o644); err != nil {
+			return fmt.Errorf("write multica-runtime SKILL.md: %w", err)
+		}
+	}
+
+	return nil
+}
+
 // buildMetaSkillContent generates the meta skill markdown that teaches the agent
 // about the Multica runtime environment and available CLI tools.
 func buildMetaSkillContent(provider string, ctx TaskContextForEnv) string {

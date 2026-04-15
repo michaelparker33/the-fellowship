@@ -62,4 +62,23 @@ echo ""
 trap 'kill 0' EXIT
 (cd server && go run ./cmd/server) &
 pnpm dev:web &
+
+# ---------- Auto-start daemon ----------
+# Wait for backend to be ready, then start the daemon in the background.
+(
+  for i in $(seq 1 30); do
+    if curl -s http://localhost:${PORT:-8080}/health >/dev/null 2>&1; then
+      # Small delay to let the server fully initialize
+      sleep 1
+      echo ""
+      echo "==> Starting daemon..."
+      cd server && go run ./cmd/multica daemon start 2>/dev/null && \
+        echo "✓ Daemon started" || \
+        echo "⚠ Daemon failed to start (check ~/.multica/daemon.log)"
+      break
+    fi
+    sleep 1
+  done
+) &
+
 wait

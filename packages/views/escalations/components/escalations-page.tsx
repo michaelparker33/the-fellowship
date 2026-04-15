@@ -38,7 +38,7 @@ function EscalationCard({
     <div
       className={cn(
         "rounded-lg border p-4 space-y-3",
-        isResolved ? "border-border/50 bg-muted/30" : "border-destructive/30 bg-destructive/5",
+        isResolved ? "border-border bg-secondary" : "border-destructive/30 bg-destructive/10",
       )}
     >
       <div className="flex items-start justify-between gap-3">

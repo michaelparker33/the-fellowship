@@ -64,7 +64,7 @@ function AchievementCard({ achievement, achievementKey }: AchievementCardProps) 
       className={`relative rounded-lg border p-5 flex flex-col gap-3 transition-all ${
         unlocked
           ? "border-amber-500/40 bg-amber-950/10 shadow-[0_0_12px_rgba(245,158,11,0.1)]"
-          : "border-border bg-muted/20 opacity-50 grayscale"
+          : "border-border bg-secondary opacity-50 grayscale"
       }`}
     >
       <div className="text-4xl">{meta.icon}</div>
@@ -122,7 +122,7 @@ export function AchievementsPage() {
         {isLoading ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {ALL_KEYS.map((k) => (
-              <div key={k} className="rounded-lg border border-border bg-muted/20 h-36 animate-pulse" />
+              <div key={k} className="rounded-lg border border-border bg-secondary h-36 animate-pulse" />
             ))}
           </div>
         ) : (

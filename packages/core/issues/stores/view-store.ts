@@ -52,6 +52,7 @@ export interface IssueViewState {
   sortDirection: SortDirection;
   cardProperties: CardProperties;
   listCollapsedStatuses: IssueStatus[];
+  boardCollapsedStatuses: IssueStatus[];
   setViewMode: (mode: ViewMode) => void;
   toggleStatusFilter: (status: IssueStatus) => void;
   togglePriorityFilter: (priority: IssuePriority) => void;
@@ -67,6 +68,7 @@ export interface IssueViewState {
   setSortDirection: (dir: SortDirection) => void;
   toggleCardProperty: (key: keyof CardProperties) => void;
   toggleListCollapsed: (status: IssueStatus) => void;
+  toggleBoardCollapsed: (status: IssueStatus) => void;
 }
 
 export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): IssueViewState => ({
@@ -87,6 +89,7 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
     dueDate: true,
   },
   listCollapsedStatuses: [],
+  boardCollapsedStatuses: [],
 
   setViewMode: (mode) => set({ viewMode: mode }),
   toggleStatusFilter: (status) =>
@@ -178,6 +181,12 @@ export const viewStoreSlice = (set: StoreApi<IssueViewState>["setState"]): Issue
         ? state.listCollapsedStatuses.filter((s) => s !== status)
         : [...state.listCollapsedStatuses, status],
     })),
+  toggleBoardCollapsed: (status) =>
+    set((state) => ({
+      boardCollapsedStatuses: state.boardCollapsedStatuses.includes(status)
+        ? state.boardCollapsedStatuses.filter((s) => s !== status)
+        : [...state.boardCollapsedStatuses, status],
+    })),
 });
 
 export const viewStorePersistOptions = (name: string) => ({
@@ -196,6 +205,7 @@ export const viewStorePersistOptions = (name: string) => ({
     sortDirection: state.sortDirection,
     cardProperties: state.cardProperties,
     listCollapsedStatuses: state.listCollapsedStatuses,
+    boardCollapsedStatuses: state.boardCollapsedStatuses,
   }),
 });
 

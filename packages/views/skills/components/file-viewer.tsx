@@ -59,7 +59,7 @@ function parseFrontmatter(raw: string): {
 
 function FrontmatterCard({ data }: { data: Frontmatter }) {
   return (
-    <div className="mb-4 rounded-lg border bg-muted/30 px-4 py-3">
+    <div className="mb-4 rounded-lg border bg-card px-4 py-3">
       <div className="grid gap-1.5">
         {Object.entries(data).map(([key, value]) => (
           <div key={key} className="flex gap-2 text-xs">
